@@ -270,9 +270,35 @@ const OptionChainRow = React.memo(function OptionChainRow({
   const ivClass = 'text-muted-foreground'
 
   // Derive OI Trend + Bias for each leg using the shared classifier.
-  // Computed once per row so both columns share the same result.
-  const ceTrendCalc = classifyOiTrend(ce?.ltp, ce?.prev_close, ce?.oi, ce?.prev_oi)
-  const peTrendCalc = classifyOiTrend(pe?.ltp, pe?.prev_close, pe?.oi, pe?.prev_oi)
+  //
+  // Many brokers don't return prev_oi / oi_change in their multiquote
+  // response, so the backend ships null for those fields and the trend
+  // would otherwise be '-' on every row. We solve it by comparing
+  // against the PREVIOUS POLL's data (already threaded in as
+  // `previousStrike` for the LTP flash animation). That gives real
+  // intraday OI flow regardless of broker — and is arguably more
+  // useful for active trading than yesterday-close comparison.
+  //
+  // Fallback chain for each baseline:
+  //   1. previousStrike (last poll's value) — real intraday signal
+  //   2. backend's prev_close / prev_oi (day-over-day comparison)
+  //   3. null → classifier returns '-'.
+  const ceLtpBaseline = previousStrike?.ce?.ltp ?? ce?.prev_close
+  const ceOiBaseline = previousStrike?.ce?.oi ?? ce?.prev_oi
+  const peLtpBaseline = previousStrike?.pe?.ltp ?? pe?.prev_close
+  const peOiBaseline = previousStrike?.pe?.oi ?? pe?.prev_oi
+  const ceTrendCalc = classifyOiTrend(
+    ce?.ltp,
+    ceLtpBaseline,
+    ce?.oi,
+    ceOiBaseline
+  )
+  const peTrendCalc = classifyOiTrend(
+    pe?.ltp,
+    peLtpBaseline,
+    pe?.oi,
+    peOiBaseline
+  )
 
   // Build-Up "badge" — matches the reference's solid green/red blocks
   // with 2-letter codes (LB/SB/LU/SC). Long Unwinding gets a lighter
