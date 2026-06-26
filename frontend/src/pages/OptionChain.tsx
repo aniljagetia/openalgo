@@ -43,6 +43,7 @@ import type { BarDataSource, BarStyle, Bias, ColumnKey, OptionStrike } from '@/t
 import {
   COLUMN_DEFINITIONS,
   DEFAULT_REFRESH_INTERVAL_MS,
+  OI_TREND_SHORT_CODE,
   REFRESH_INTERVAL_OPTIONS,
   classifyOiTrend,
 } from '@/types/option-chain'
@@ -240,14 +241,18 @@ const OptionChainRow = React.memo(function OptionChainRow({
   const ceTrendCalc = classifyOiTrend(ce?.ltp, ce?.prev_close, ce?.oi, ce?.prev_oi)
   const peTrendCalc = classifyOiTrend(pe?.ltp, pe?.prev_close, pe?.oi, pe?.prev_oi)
 
-  // Colour the trend label so traders can scan the column at a glance:
-  // green = bullish, red = bearish, grey = no signal.
-  const trendBadgeClass = (bias: Bias) =>
-    bias === 'Bullish'
-      ? 'inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-500/10 text-green-600 dark:text-green-400'
-      : bias === 'Bearish'
-        ? 'inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-600 dark:text-red-400'
-        : 'inline-block px-1.5 py-0.5 rounded text-[10px] text-muted-foreground'
+  // Build-Up "badge" — matches the reference's solid green/red blocks
+  // with 2-letter codes (LB/SB/LU/SC). Long Unwinding gets a lighter
+  // green; Short Covering a lighter red (price-direction overrides
+  // OI-direction for visual emphasis on the latter two).
+  const buildUpBadgeClass = (trend: string) => {
+    if (trend === 'LB') return 'inline-block px-2 py-0.5 rounded text-xs font-bold bg-green-600 text-white'
+    if (trend === 'SB') return 'inline-block px-2 py-0.5 rounded text-xs font-bold bg-red-600 text-white'
+    if (trend === 'LU') return 'inline-block px-2 py-0.5 rounded text-xs font-bold bg-green-400/70 text-white'
+    if (trend === 'SC') return 'inline-block px-2 py-0.5 rounded text-xs font-bold bg-red-400/70 text-white'
+    return 'inline-block px-2 py-0.5 rounded text-xs text-muted-foreground'
+  }
+  // Bias column is a plain green/red text label (matches reference).
   const biasBadgeClass = (bias: Bias) =>
     bias === 'Bullish'
       ? 'text-green-600 dark:text-green-400 font-semibold text-xs'
@@ -263,8 +268,8 @@ const OptionChainRow = React.memo(function OptionChainRow({
         return <span className={numClass}>{formatInLakhs(ce?.volume)}</span>
       case 'ce_oi_trend':
         return (
-          <span className={trendBadgeClass(ceTrendCalc.bias)}>
-            {ceTrendCalc.trend}
+          <span className={buildUpBadgeClass(OI_TREND_SHORT_CODE[ceTrendCalc.trend])}>
+            {OI_TREND_SHORT_CODE[ceTrendCalc.trend]}
           </span>
         )
       case 'ce_bias':
@@ -312,8 +317,8 @@ const OptionChainRow = React.memo(function OptionChainRow({
         return <span className={numClass}>{formatInLakhs(pe?.volume)}</span>
       case 'pe_oi_trend':
         return (
-          <span className={trendBadgeClass(peTrendCalc.bias)}>
-            {peTrendCalc.trend}
+          <span className={buildUpBadgeClass(OI_TREND_SHORT_CODE[peTrendCalc.trend])}>
+            {OI_TREND_SHORT_CODE[peTrendCalc.trend]}
           </span>
         )
       case 'pe_bias':

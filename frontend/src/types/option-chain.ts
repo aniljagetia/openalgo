@@ -126,23 +126,45 @@ export interface ColumnDefinition {
 
 export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   // CE columns (left side) - ordered left to right.
-  // Greeks sit at the very LEFT (top-left of the CE half) per user
-  // request — IV/Delta/Gamma/Theta/Vega first, then OI/Volume/quote
-  // columns, with Spread closest to the strike.
+  // Layout matches the reference screenshot:
+  //   [Build Up][Trend][Vega Theta Gamma Delta IV][OI Volume]
+  //   [BidQty Bid LTP Ask AskQty Spread] | Strike
+  // Build Up + Trend sit at the very LEFT edge so the OI-direction
+  // signal is the first thing the trader's eye lands on. Greeks sit
+  // inside that, ordered Vega→IV (reverse of reference's "Vega Theta
+  // Gamma Delta IV" header — same order).
   {
-    key: 'ce_iv',
-    label: 'IV',
+    key: 'ce_oi_trend',
+    label: 'Build Up',
     side: 'ce',
-    width: 'w-14',
+    width: 'w-16',
     align: 'right',
     defaultVisible: true,
-    formatter: 'iv',
+    formatter: 'oi_trend',
   },
   {
-    key: 'ce_delta',
-    label: 'Delta',
+    key: 'ce_bias',
+    label: 'Trend',
     side: 'ce',
-    width: 'w-14',
+    width: 'w-20',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'bias',
+  },
+  {
+    key: 'ce_vega',
+    label: 'Vega',
+    side: 'ce',
+    width: 'w-16',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'greek',
+  },
+  {
+    key: 'ce_theta',
+    label: 'Theta',
+    side: 'ce',
+    width: 'w-16',
     align: 'right',
     defaultVisible: true,
     formatter: 'greek',
@@ -157,22 +179,22 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     formatter: 'greek',
   },
   {
-    key: 'ce_theta',
-    label: 'Theta',
+    key: 'ce_delta',
+    label: 'Delta',
     side: 'ce',
-    width: 'w-14',
+    width: 'w-16',
     align: 'right',
     defaultVisible: true,
     formatter: 'greek',
   },
   {
-    key: 'ce_vega',
-    label: 'Vega',
+    key: 'ce_iv',
+    label: 'IV',
     side: 'ce',
     width: 'w-14',
     align: 'right',
     defaultVisible: true,
-    formatter: 'greek',
+    formatter: 'iv',
   },
   {
     key: 'ce_oi',
@@ -191,27 +213,6 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     align: 'right',
     defaultVisible: true,
     formatter: 'number',
-  },
-  // OI Trend = price-direction × OI-direction matrix. Visually sits
-  // next to OI/Volume since it's derived from them. Bias is the
-  // bullish/bearish summary tag.
-  {
-    key: 'ce_oi_trend',
-    label: 'OI Trend',
-    side: 'ce',
-    width: 'w-28',
-    align: 'right',
-    defaultVisible: true,
-    formatter: 'oi_trend',
-  },
-  {
-    key: 'ce_bias',
-    label: 'Bias',
-    side: 'ce',
-    width: 'w-20',
-    align: 'right',
-    defaultVisible: true,
-    formatter: 'bias',
   },
   {
     key: 'ce_bid_qty',
@@ -332,26 +333,6 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     formatter: 'number',
   },
-  // Mirror of CE: Bias then OI Trend so left-to-right reads
-  // Bid Qty → Bias → OI Trend → Volume → OI → Greeks.
-  {
-    key: 'pe_bias',
-    label: 'Bias',
-    side: 'pe',
-    width: 'w-20',
-    align: 'left',
-    defaultVisible: true,
-    formatter: 'bias',
-  },
-  {
-    key: 'pe_oi_trend',
-    label: 'OI Trend',
-    side: 'pe',
-    width: 'w-28',
-    align: 'left',
-    defaultVisible: true,
-    formatter: 'oi_trend',
-  },
   {
     key: 'pe_volume',
     label: 'Volume',
@@ -370,24 +351,23 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     formatter: 'number',
   },
-  // Black-76 Greeks pinned to the RIGHT edge of the PE half (the user's
-  // "top right" target). Mirror of the CE order — Vega is closest to OI,
-  // IV is the rightmost column on the page so the chain reads
-  // symmetrically with IV bookending both halves.
+  // Mirror of CE: IV → Delta → Gamma → Theta → Vega → Trend → Build Up.
+  // Build Up sits at the very RIGHT edge of the PE half so the
+  // OI-direction signal bookends both halves of the chain.
   {
-    key: 'pe_vega',
-    label: 'Vega',
+    key: 'pe_iv',
+    label: 'IV',
     side: 'pe',
     width: 'w-14',
     align: 'left',
     defaultVisible: true,
-    formatter: 'greek',
+    formatter: 'iv',
   },
   {
-    key: 'pe_theta',
-    label: 'Theta',
+    key: 'pe_delta',
+    label: 'Delta',
     side: 'pe',
-    width: 'w-14',
+    width: 'w-16',
     align: 'left',
     defaultVisible: true,
     formatter: 'greek',
@@ -402,22 +382,40 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     formatter: 'greek',
   },
   {
-    key: 'pe_delta',
-    label: 'Delta',
+    key: 'pe_theta',
+    label: 'Theta',
     side: 'pe',
-    width: 'w-14',
+    width: 'w-16',
     align: 'left',
     defaultVisible: true,
     formatter: 'greek',
   },
   {
-    key: 'pe_iv',
-    label: 'IV',
+    key: 'pe_vega',
+    label: 'Vega',
     side: 'pe',
-    width: 'w-14',
+    width: 'w-16',
     align: 'left',
     defaultVisible: true,
-    formatter: 'iv',
+    formatter: 'greek',
+  },
+  {
+    key: 'pe_bias',
+    label: 'Trend',
+    side: 'pe',
+    width: 'w-20',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'bias',
+  },
+  {
+    key: 'pe_oi_trend',
+    label: 'Build Up',
+    side: 'pe',
+    width: 'w-16',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'oi_trend',
   },
 ]
 
@@ -454,7 +452,20 @@ export const DEFAULT_PREFERENCES: OptionChainPreferences = {
 // stored prefs cleanly.
 //   v1 → v2: Greeks moved from middle to outer edges
 //   v2 → v3: OI Trend + Bias columns added per side
-export const LOCALSTORAGE_KEY = 'openalgo_option_chain_prefs_v3'
+//   v3 → v4: Build Up + Trend moved to outermost edge (matching ref
+//            screenshot); Greeks reordered to Vega→IV
+export const LOCALSTORAGE_KEY = 'openalgo_option_chain_prefs_v4'
+
+// Short two-letter codes for the OI Trend column, matching the
+// reference screenshot (LB / SB / LU / SC). Mapped from the long
+// classifier labels in classifyOiTrend().
+export const OI_TREND_SHORT_CODE: Record<OiTrendLabel, string> = {
+  'Long Buildup': 'LB',
+  'Short Buildup': 'SB',
+  'Long Unwinding': 'LU',
+  'Short Covering': 'SC',
+  '-': '-',
+}
 
 // ---------------------------------------------------------------------
 // OI Trend classification — used by the OptionChain table to derive
