@@ -895,8 +895,16 @@ export default function OptionChain() {
 
           <Card>
             <CardContent className="p-0">
+              {/* Horizontal scroll wrapper. The table forces a min-width
+                  so on viewports too narrow to fit every column at its
+                  declared w-* size (e.g. when all 10 Greek columns are
+                  on), the parent overflow kicks in and a horizontal
+                  scrollbar appears instead of squashing text into
+                  overlap. ~80-100 px per column × 27 visible columns =
+                  ~2000 px; we set 1900 to leave the table responsive on
+                  desktops while still forcing scroll on laptops. */}
               <div className="overflow-x-auto">
-                <Table className="w-full table-fixed">
+                <Table className="w-full table-fixed min-w-[1900px]">
                   <TableHeader>
                     {/* Section headers row */}
                     <TableRow className="bg-muted/30 border-b-0">
