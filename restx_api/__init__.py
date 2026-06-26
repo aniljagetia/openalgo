@@ -35,6 +35,7 @@ from .multi_option_greeks import api as multi_option_greeks_ns
 from .multiquotes import api as multiquotes_ns
 from .openposition import api as openposition_ns
 from .option_chain import api as option_chain_ns
+from .option_chain_history import api as option_chain_history_ns
 from .option_greeks import api as option_greeks_ns
 from .option_symbol import api as option_symbol_ns
 from .options_multiorder import api as options_multiorder_ns
@@ -69,6 +70,7 @@ api.add_namespace(multiquotes_ns, path="/multiquotes")
 api.add_namespace(history_ns, path="/history")
 api.add_namespace(depth_ns, path="/depth")
 api.add_namespace(option_chain_ns, path="/optionchain")
+api.add_namespace(option_chain_history_ns, path="/optionchain")
 api.add_namespace(intervals_ns, path="/intervals")
 api.add_namespace(funds_ns, path="/funds")
 api.add_namespace(orderbook_ns, path="/orderbook")

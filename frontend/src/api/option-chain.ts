@@ -7,6 +7,17 @@ export interface ExpiryResponse {
   message?: string
 }
 
+export interface HistoricalOiEntry {
+  prev_oi: number | null
+  candle_ts: string | null
+}
+
+export interface HistoricalOiResponse {
+  status: 'success' | 'error'
+  data: Record<string, HistoricalOiEntry>
+  message?: string
+}
+
 export const optionChainApi = {
   getOptionChain: async (
     apiKey: string,
@@ -22,6 +33,22 @@ export const optionChainApi = {
       expiry_date: expiryDate,
       strike_count: strikeCount ?? 20,
     })
+    return response.data
+  },
+
+  getHistoricalOi: async (
+    apiKey: string,
+    symbols: Array<{ symbol: string; exchange: string }>,
+    lookbackMinutes: number
+  ): Promise<HistoricalOiResponse> => {
+    const response = await apiClient.post<HistoricalOiResponse>(
+      '/optionchain/historical-oi',
+      {
+        apikey: apiKey,
+        symbols,
+        lookback_minutes: lookbackMinutes,
+      }
+    )
     return response.data
   },
 

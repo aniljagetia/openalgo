@@ -1,6 +1,7 @@
 import { Check, ChevronsUpDown, RefreshCw, TrendingUp, Wifi, WifiOff } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { oiProfileApi } from '@/api/oi-profile'
+import { optionChainApi } from '@/api/option-chain'
 import {
   BarSettingsDropdown,
   ColumnConfigDropdown,
@@ -160,6 +161,7 @@ interface OptionChainRowProps {
   barStyle: BarStyle
   optionExchange: string
   onPlaceOrder: (params: PlaceOrderParams) => void
+  historicalOi?: Map<string, number>
 }
 
 // Memoized row component to prevent unnecessary re-renders
@@ -173,6 +175,7 @@ const OptionChainRow = React.memo(function OptionChainRow({
   barStyle,
   optionExchange,
   onPlaceOrder,
+  historicalOi,
 }: OptionChainRowProps) {
   const ce = strike.ce
   const pe = strike.pe
@@ -279,14 +282,21 @@ const OptionChainRow = React.memo(function OptionChainRow({
   // intraday OI flow regardless of broker — and is arguably more
   // useful for active trading than yesterday-close comparison.
   //
-  // Fallback chain for each baseline:
-  //   1. previousStrike (last poll's value) — real intraday signal
-  //   2. backend's prev_close / prev_oi (day-over-day comparison)
-  //   3. null → classifier returns '-'.
+  // Fallback chain for each OI baseline:
+  //   1. historicalOi[symbol] — broker-historical OI from N min ago
+  //      (where N = current refresh interval). True historical signal
+  //      that matches the user's chosen lookback window.
+  //   2. previousStrike (last poll's value) — in-memory intraday signal
+  //   3. backend's prev_oi (day-over-day comparison)
+  //   4. null → classifier returns '-'.
+  // LTP baseline doesn't yet have a broker-historical source so it
+  // keeps the 2/3/4 fallback only.
   const ceLtpBaseline = previousStrike?.ce?.ltp ?? ce?.prev_close
-  const ceOiBaseline = previousStrike?.ce?.oi ?? ce?.prev_oi
+  const ceHistOi = ce?.symbol ? historicalOi?.get(ce.symbol) : undefined
+  const ceOiBaseline = ceHistOi ?? previousStrike?.ce?.oi ?? ce?.prev_oi
   const peLtpBaseline = previousStrike?.pe?.ltp ?? pe?.prev_close
-  const peOiBaseline = previousStrike?.pe?.oi ?? pe?.prev_oi
+  const peHistOi = pe?.symbol ? historicalOi?.get(pe.symbol) : undefined
+  const peOiBaseline = peHistOi ?? previousStrike?.pe?.oi ?? pe?.prev_oi
   const ceTrendCalc = classifyOiTrend(
     ce?.ltp,
     ceLtpBaseline,
@@ -666,6 +676,13 @@ export default function OptionChain() {
   const [expiries, setExpiries] = useState<string[]>([])
   // Use ref for previous data to avoid causing re-renders and enable proper flash animation
   const previousDataRef = useRef<Map<number, OptionStrike>>(new Map())
+  // Broker-historical OI baseline, refreshed in lockstep with the chain.
+  // Keyed by option symbol; lookback = current refresh interval. When
+  // populated, this overrides the in-memory previous-poll fallback in
+  // OptionChainRow so Build Up / Trend reflect TRUE N-min-ago OI.
+  const [historicalOi, setHistoricalOi] = useState<Map<string, number>>(
+    () => new Map()
+  )
   const [orderDialog, setOrderDialog] = useState<{
     open: boolean
     symbol: string
@@ -768,6 +785,46 @@ export default function OptionChain() {
       cancelled = true
     }
   }, [selectedUnderlying, selectedExchange])
+
+  // Fetch broker-historical OI for every option symbol in the current
+  // chain, using the user's refresh interval as the lookback. Fires
+  // once per chain payload (i.e. once per poll cycle). The endpoint is
+  // self-cached on the server (60s TTL) so repeated calls for the same
+  // (symbol, lookback) within a minute hit memory, not the broker.
+  // Errors are non-fatal — the row just falls back to the in-memory
+  // previous-poll baseline.
+  useEffect(() => {
+    if (!data?.chain || !apiKey || !optionExchange) return
+    const lookbackMinutes = Math.max(1, Math.round(refreshIntervalMs / 60000))
+    const symbols: Array<{ symbol: string; exchange: string }> = []
+    data.chain.forEach((strike) => {
+      if (strike.ce?.symbol) {
+        symbols.push({ symbol: strike.ce.symbol, exchange: optionExchange })
+      }
+      if (strike.pe?.symbol) {
+        symbols.push({ symbol: strike.pe.symbol, exchange: optionExchange })
+      }
+    })
+    if (symbols.length === 0) return
+
+    let cancelled = false
+    optionChainApi
+      .getHistoricalOi(apiKey, symbols, lookbackMinutes)
+      .then((resp) => {
+        if (cancelled || resp.status !== 'success') return
+        const next = new Map<string, number>()
+        Object.entries(resp.data).forEach(([sym, entry]) => {
+          if (entry?.prev_oi != null) next.set(sym, entry.prev_oi)
+        })
+        setHistoricalOi(next)
+      })
+      .catch(() => {
+        // Silently fall back to in-memory previous-poll baseline.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [data?.chain, apiKey, optionExchange, refreshIntervalMs])
 
   // Update previous data ref after render (for flash animation)
   // Using useEffect to update AFTER the current data is rendered
@@ -1151,6 +1208,7 @@ export default function OptionChain() {
                         barStyle={barStyle}
                         optionExchange={optionExchange}
                         onPlaceOrder={handlePlaceOrder}
+                        historicalOi={historicalOi}
                       />
                     ))}
                   </TableBody>

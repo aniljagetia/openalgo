@@ -221,6 +221,18 @@ class OptionChainSchema(Schema):
     )  # Number of strikes above/below ATM. If not provided, returns entire chain
 
 
+class OptionChainHistoricalOiSchema(Schema):
+    apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))
+    symbols = fields.List(
+        fields.Nested(SymbolExchangePair),
+        required=True,
+        validate=validate.Length(min=1, max=200),
+    )
+    lookback_minutes = fields.Int(
+        required=True, validate=validate.Range(min=1, max=1440)
+    )
+
+
 class MarketHolidaysSchema(Schema):
     apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))  # API Key for authentication
     year = fields.Int(
