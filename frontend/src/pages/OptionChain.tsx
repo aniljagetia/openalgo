@@ -218,12 +218,34 @@ const OptionChainRow = React.memo(function OptionChainRow({
   // Use tabular-nums for consistent number widths to prevent layout shifts
   const numClass = 'font-mono tabular-nums text-xs'
 
+  // Greek formatters — null/undefined → '-' so empty cells read clean.
+  // IV is a percentage (e.g. 18.4 = 18.4%). Delta / Gamma / Theta /
+  // Vega are unitless numbers — show 4 dp for delta/theta/vega, 6 dp
+  // for gamma (gamma is typically ~1e-4).
+  const formatIv = (v: number | null | undefined) =>
+    v == null || Number.isNaN(v) ? '-' : `${v.toFixed(2)}%`
+  const formatGreek = (v: number | null | undefined, dp = 4) =>
+    v == null || Number.isNaN(v) ? '-' : v.toFixed(dp)
+  // Greens for positive delta / negative theta — neutral grey when the
+  // value is null so we don't visually emphasise missing data.
+  const ivClass = 'text-muted-foreground'
+
   const getCeColumnValue = (key: ColumnKey) => {
     switch (key) {
       case 'ce_oi':
         return <span className={numClass}>{formatInLakhs(ce?.oi)}</span>
       case 'ce_volume':
         return <span className={numClass}>{formatInLakhs(ce?.volume)}</span>
+      case 'ce_iv':
+        return <span className={cn(numClass, ivClass)}>{formatIv(ce?.iv)}</span>
+      case 'ce_delta':
+        return <span className={numClass}>{formatGreek(ce?.delta)}</span>
+      case 'ce_gamma':
+        return <span className={numClass}>{formatGreek(ce?.gamma, 6)}</span>
+      case 'ce_theta':
+        return <span className={numClass}>{formatGreek(ce?.theta)}</span>
+      case 'ce_vega':
+        return <span className={numClass}>{formatGreek(ce?.vega)}</span>
       case 'ce_bid_qty':
         return <span className={numClass}>{ce?.bid_qty ?? 0}</span>
       case 'ce_bid':
@@ -251,6 +273,16 @@ const OptionChainRow = React.memo(function OptionChainRow({
         return <span className={numClass}>{formatInLakhs(pe?.oi)}</span>
       case 'pe_volume':
         return <span className={numClass}>{formatInLakhs(pe?.volume)}</span>
+      case 'pe_iv':
+        return <span className={cn(numClass, ivClass)}>{formatIv(pe?.iv)}</span>
+      case 'pe_delta':
+        return <span className={numClass}>{formatGreek(pe?.delta)}</span>
+      case 'pe_gamma':
+        return <span className={numClass}>{formatGreek(pe?.gamma, 6)}</span>
+      case 'pe_theta':
+        return <span className={numClass}>{formatGreek(pe?.theta)}</span>
+      case 'pe_vega':
+        return <span className={numClass}>{formatGreek(pe?.vega)}</span>
       case 'pe_bid_qty':
         return <span className={numClass}>{pe?.bid_qty ?? 0}</span>
       case 'pe_bid':

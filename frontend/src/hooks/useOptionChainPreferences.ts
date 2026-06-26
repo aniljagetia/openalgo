@@ -51,6 +51,27 @@ function loadPreferences(): OptionChainPreferences {
       visibleColumns.push('strike')
     }
 
+    // Detect column keys the user has never seen — they exist in the
+    // current build but aren't in the stored columnOrder. Auto-add them
+    // to visibleColumns when they're default-visible so newly added
+    // columns (e.g. the Greeks: IV/Delta/Gamma/Theta/Vega) show up for
+    // returning users instead of silently being hidden until they open
+    // the column-config menu.
+    const storedOrderSet = new Set(
+      Array.isArray(parsed.columnOrder) ? parsed.columnOrder : []
+    )
+    const visibleSet = new Set(visibleColumns)
+    COLUMN_DEFINITIONS.forEach((col) => {
+      if (
+        col.defaultVisible &&
+        !storedOrderSet.has(col.key) &&
+        !visibleSet.has(col.key)
+      ) {
+        visibleColumns.push(col.key)
+        visibleSet.add(col.key)
+      }
+    })
+
     const columnOrder = Array.isArray(parsed.columnOrder)
       ? parsed.columnOrder.filter((key) => validColumnKeys.has(key))
       : DEFAULT_PREFERENCES.columnOrder

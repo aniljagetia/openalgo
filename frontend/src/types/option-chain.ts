@@ -31,6 +31,14 @@ export interface OptionData {
   oi: number
   lotsize: number
   tick_size: number
+  // Black-76 derived fields (optional — backend may return null when IV
+  // can't converge, opengreeks is missing, or the leg has no quote).
+  // `iv` is a percentage (e.g. 18.4 = 18.4%).
+  iv?: number | null
+  delta?: number | null
+  gamma?: number | null
+  theta?: number | null
+  vega?: number | null
 }
 
 export interface OptionChainParams {
@@ -60,6 +68,11 @@ export interface OptionChainState {
 export type ColumnKey =
   | 'ce_oi'
   | 'ce_volume'
+  | 'ce_iv'
+  | 'ce_delta'
+  | 'ce_gamma'
+  | 'ce_theta'
+  | 'ce_vega'
   | 'ce_bid_qty'
   | 'ce_bid'
   | 'ce_ltp'
@@ -73,6 +86,11 @@ export type ColumnKey =
   | 'pe_ltp'
   | 'pe_bid'
   | 'pe_bid_qty'
+  | 'pe_vega'
+  | 'pe_theta'
+  | 'pe_gamma'
+  | 'pe_delta'
+  | 'pe_iv'
   | 'pe_volume'
   | 'pe_oi'
 
@@ -85,7 +103,7 @@ export interface ColumnDefinition {
   width: string
   align: 'left' | 'center' | 'right'
   defaultVisible: boolean
-  formatter?: 'number' | 'price' | 'spread' | 'none'
+  formatter?: 'number' | 'price' | 'spread' | 'greek' | 'iv' | 'none'
 }
 
 export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
@@ -107,6 +125,54 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     align: 'right',
     defaultVisible: true,
     formatter: 'number',
+  },
+  // Black-76 Greeks (CE side, left-of-LTP). New columns — default
+  // visible per user request; toggle off via the column-config menu
+  // if the table gets too wide.
+  {
+    key: 'ce_iv',
+    label: 'IV',
+    side: 'ce',
+    width: 'w-14',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'iv',
+  },
+  {
+    key: 'ce_delta',
+    label: 'Delta',
+    side: 'ce',
+    width: 'w-14',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'greek',
+  },
+  {
+    key: 'ce_gamma',
+    label: 'Gamma',
+    side: 'ce',
+    width: 'w-16',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'greek',
+  },
+  {
+    key: 'ce_theta',
+    label: 'Theta',
+    side: 'ce',
+    width: 'w-14',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'greek',
+  },
+  {
+    key: 'ce_vega',
+    label: 'Vega',
+    side: 'ce',
+    width: 'w-14',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'greek',
   },
   {
     key: 'ce_bid_qty',
@@ -226,6 +292,53 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     align: 'left',
     defaultVisible: true,
     formatter: 'number',
+  },
+  // Black-76 Greeks (PE side, mirrored from the CE side so the
+  // two halves of the chain stay symmetric).
+  {
+    key: 'pe_vega',
+    label: 'Vega',
+    side: 'pe',
+    width: 'w-14',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'greek',
+  },
+  {
+    key: 'pe_theta',
+    label: 'Theta',
+    side: 'pe',
+    width: 'w-14',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'greek',
+  },
+  {
+    key: 'pe_gamma',
+    label: 'Gamma',
+    side: 'pe',
+    width: 'w-16',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'greek',
+  },
+  {
+    key: 'pe_delta',
+    label: 'Delta',
+    side: 'pe',
+    width: 'w-14',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'greek',
+  },
+  {
+    key: 'pe_iv',
+    label: 'IV',
+    side: 'pe',
+    width: 'w-14',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'iv',
   },
   {
     key: 'pe_volume',

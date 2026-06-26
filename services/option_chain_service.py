@@ -45,6 +45,7 @@ Strike Labels (different for CE and PE):
     - Strike ABOVE ATM: CE is OTM, PE is ITM
 """
 
+from datetime import datetime
 from typing import Any
 
 from database.auth_db import get_auth_token_broker
@@ -62,6 +63,136 @@ from utils.constants import CRYPTO_EXCHANGES, INSTRUMENT_PERPFUT
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Black-76 inputs we attach to every CE/PE: implied_volatility (%) + the
+# four standard Greeks. opengreeks (Rust core) is already used by
+# iv_chart_service / option_greeks_service, so this adds no new deps.
+_GREEK_FIELDS_EMPTY = {
+    "iv": None,
+    "delta": None,
+    "gamma": None,
+    "theta": None,
+    "vega": None,
+}
+
+# Default annualised risk-free rate per F&O exchange. Mirrors the table
+# used by option_greeks_service so values agree across the IV Smile,
+# per-strike Greeks endpoint, and this option chain.
+_GREEK_DEFAULT_INTEREST = {"NFO": 0.0, "BFO": 0.0, "CDS": 0.0, "MCX": 0.0}
+
+# Closing time of the exchange in IST hours/minutes. Used to anchor the
+# expiry datetime so time-to-expiry includes the intraday tail.
+_EXCHANGE_EXPIRY_TIME = {
+    "NFO": (15, 30),
+    "BFO": (15, 30),
+    "CDS": (12, 30),
+    "MCX": (23, 30),
+}
+
+_MONTH_MAP = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+
+def _parse_expiry_to_datetime(expiry_ddmmmyy: str, options_exchange: str) -> datetime | None:
+    """Parse a DDMMMYY expiry string + exchange into a tz-naive expiry
+    datetime anchored at the exchange's close time. Returns None on bad
+    input so callers can skip Greeks rather than blow up the chain."""
+    try:
+        s = expiry_ddmmmyy.strip().upper()
+        # Tolerate "30NOV25" and "30NOV2025" — strip leading day digits,
+        # then month, then year.
+        if len(s) >= 9 and s[-4:].isdigit():  # DDMMMYYYY
+            day = int(s[:-7])
+            month = _MONTH_MAP[s[-7:-4]]
+            year = int(s[-4:])
+        else:  # DDMMMYY
+            day = int(s[:-5])
+            month = _MONTH_MAP[s[-5:-2]]
+            year = 2000 + int(s[-2:])
+        hh, mm = _EXCHANGE_EXPIRY_TIME.get(options_exchange.upper(), (15, 30))
+        return datetime(year, month, day, hh, mm)
+    except Exception:
+        logger.debug(f"Could not parse expiry '{expiry_ddmmmyy}' for Greeks")
+        return None
+
+
+def _years_to_expiry(expiry_dt: datetime) -> float:
+    """Years remaining to expiry from now. Floors at a tiny positive
+    value so opengreeks won't divide by zero on the expiry day."""
+    now = datetime.now()
+    if expiry_dt <= now:
+        return 0.0001
+    delta = expiry_dt - now
+    yrs = delta.total_seconds() / (60 * 60 * 24 * 365.0)
+    return max(yrs, 0.0001)
+
+
+def _compute_greeks_for_leg(
+    spot: float,
+    strike: float,
+    option_ltp: float,
+    t_years: float,
+    r_decimal: float,
+    flag: str,
+    greek_fns: dict,
+) -> dict:
+    """Compute IV (%) + delta/gamma/theta/vega for a single CE or PE
+    quote. Returns the same shape as _GREEK_FIELDS_EMPTY with None for
+    legs where the math can't converge (e.g. zero LTP, deep-ITM with no
+    time value). Never raises — Greeks are best-effort decoration."""
+    if (
+        spot <= 0
+        or strike <= 0
+        or option_ltp <= 0
+        or t_years <= 0
+        or greek_fns is None
+    ):
+        return dict(_GREEK_FIELDS_EMPTY)
+
+    try:
+        iv_decimal = greek_fns["iv"](option_ltp, spot, strike, r_decimal, t_years, flag)
+        if not iv_decimal or iv_decimal <= 0:
+            return dict(_GREEK_FIELDS_EMPTY)
+        return {
+            "iv": round(iv_decimal * 100.0, 2),
+            "delta": round(
+                greek_fns["delta"](flag, spot, strike, t_years, r_decimal, iv_decimal), 4
+            ),
+            "gamma": round(
+                greek_fns["gamma"](flag, spot, strike, t_years, r_decimal, iv_decimal), 6
+            ),
+            "theta": round(
+                greek_fns["theta"](flag, spot, strike, t_years, r_decimal, iv_decimal), 4
+            ),
+            "vega": round(
+                greek_fns["vega"](flag, spot, strike, t_years, r_decimal, iv_decimal), 4
+            ),
+        }
+    except Exception:
+        # Convergence failure / deep-ITM / numerical issues — silent skip.
+        return dict(_GREEK_FIELDS_EMPTY)
+
+
+def _load_black76_fns() -> dict | None:
+    """Lazy-load opengreeks once per request; return None if missing so
+    the chain still works for users without the Rust-backed library."""
+    try:
+        from opengreeks import black76  # type: ignore
+
+        return {
+            "iv": black76.implied_volatility,
+            "delta": black76.delta,
+            "gamma": black76.gamma,
+            "theta": black76.theta,
+            "vega": black76.vega,
+        }
+    except Exception:
+        logger.warning(
+            "opengreeks not installed — option chain Greeks will be omitted"
+        )
+        return None
 
 
 def get_strikes_with_labels(
@@ -440,15 +571,73 @@ def get_option_chain(
                 f"Structure-only option chain ({len(symbols_to_fetch)} symbols); skipping live quotes"
             )
 
+        # Pre-compute Black-76 inputs ONCE for the whole chain — every
+        # leg shares the same expiry, risk-free rate, and underlying.
+        # Forward price: use the synthetic future from ATM CE/PE quotes
+        # via put-call parity when both legs have a quote; else fall back
+        # to spot LTP. This is the same convention iv_smile_service uses.
+        greek_fns = _load_black76_fns() if with_quotes else None
+        expiry_dt = (
+            _parse_expiry_to_datetime(final_expiry, options_exchange)
+            if greek_fns
+            else None
+        )
+        years_to_exp = _years_to_expiry(expiry_dt) if expiry_dt else 0.0
+        r_decimal = _GREEK_DEFAULT_INTEREST.get(options_exchange.upper(), 0.0) / 100.0
+
+        forward_for_greeks = underlying_ltp or 0.0
+        if greek_fns:
+            atm_ce_sym = next(
+                (
+                    it["ce"]["symbol"]
+                    for it in chain_symbols
+                    if it["strike"] == atm_strike and it["ce"]["exists"]
+                ),
+                None,
+            )
+            atm_pe_sym = next(
+                (
+                    it["pe"]["symbol"]
+                    for it in chain_symbols
+                    if it["strike"] == atm_strike and it["pe"]["exists"]
+                ),
+                None,
+            )
+            atm_ce_ltp = (
+                quotes_map.get(atm_ce_sym, {}).get("ltp", 0) if atm_ce_sym else 0
+            )
+            atm_pe_ltp = (
+                quotes_map.get(atm_pe_sym, {}).get("ltp", 0) if atm_pe_sym else 0
+            )
+            if atm_ce_ltp > 0 and atm_pe_ltp > 0:
+                # Put-call parity synthetic forward — more accurate than
+                # spot for Black-76 on Indian F&O (ignores div yield).
+                forward_for_greeks = atm_strike + atm_ce_ltp - atm_pe_ltp
+
         # Step 9: Build final chain response
         chain = []
         for item in chain_symbols:
             strike_data = {"strike": item["strike"]}
+            strike = item["strike"]
 
             # CE data (label inside CE object)
             ce_symbol = item["ce"]["symbol"]
             if item["ce"]["exists"]:
                 ce_quote = quotes_map.get(ce_symbol, {})
+                ce_ltp_val = ce_quote.get("ltp", 0) or 0
+                ce_greeks = (
+                    _compute_greeks_for_leg(
+                        forward_for_greeks,
+                        strike,
+                        ce_ltp_val,
+                        years_to_exp,
+                        r_decimal,
+                        "c",
+                        greek_fns,
+                    )
+                    if greek_fns
+                    else dict(_GREEK_FIELDS_EMPTY)
+                )
                 strike_data["ce"] = {
                     "symbol": ce_symbol,
                     "label": item["ce"]["label"],
@@ -465,6 +654,7 @@ def get_option_chain(
                     "oi": ce_quote.get("oi", 0),
                     "lotsize": item["ce"]["lotsize"],
                     "tick_size": item["ce"]["tick_size"],
+                    **ce_greeks,
                 }
             else:
                 strike_data["ce"] = None
@@ -473,6 +663,20 @@ def get_option_chain(
             pe_symbol = item["pe"]["symbol"]
             if item["pe"]["exists"]:
                 pe_quote = quotes_map.get(pe_symbol, {})
+                pe_ltp_val = pe_quote.get("ltp", 0) or 0
+                pe_greeks = (
+                    _compute_greeks_for_leg(
+                        forward_for_greeks,
+                        strike,
+                        pe_ltp_val,
+                        years_to_exp,
+                        r_decimal,
+                        "p",
+                        greek_fns,
+                    )
+                    if greek_fns
+                    else dict(_GREEK_FIELDS_EMPTY)
+                )
                 strike_data["pe"] = {
                     "symbol": pe_symbol,
                     "label": item["pe"]["label"],
@@ -489,6 +693,7 @@ def get_option_chain(
                     "oi": pe_quote.get("oi", 0),
                     "lotsize": item["pe"]["lotsize"],
                     "tick_size": item["pe"]["tick_size"],
+                    **pe_greeks,
                 }
             else:
                 strike_data["pe"] = None
