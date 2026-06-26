@@ -29,6 +29,12 @@ export interface OptionData {
   prev_close: number
   volume: number
   oi: number
+  // Previous-day close OI. Used by the FE to derive an OI Trend
+  // (Long Buildup / Short Buildup / Long Unwinding / Short Covering)
+  // when paired with ltp + prev_close. May be null when the broker
+  // doesn't return prev_oi or oi_change — FE renders the trend as '-'
+  // in that case.
+  prev_oi?: number | null
   lotsize: number
   tick_size: number
   // Black-76 derived fields (optional — backend may return null when IV
@@ -68,6 +74,8 @@ export interface OptionChainState {
 export type ColumnKey =
   | 'ce_oi'
   | 'ce_volume'
+  | 'ce_oi_trend'
+  | 'ce_bias'
   | 'ce_iv'
   | 'ce_delta'
   | 'ce_gamma'
@@ -86,6 +94,8 @@ export type ColumnKey =
   | 'pe_ltp'
   | 'pe_bid'
   | 'pe_bid_qty'
+  | 'pe_bias'
+  | 'pe_oi_trend'
   | 'pe_vega'
   | 'pe_theta'
   | 'pe_gamma'
@@ -103,7 +113,15 @@ export interface ColumnDefinition {
   width: string
   align: 'left' | 'center' | 'right'
   defaultVisible: boolean
-  formatter?: 'number' | 'price' | 'spread' | 'greek' | 'iv' | 'none'
+  formatter?:
+    | 'number'
+    | 'price'
+    | 'spread'
+    | 'greek'
+    | 'iv'
+    | 'oi_trend'
+    | 'bias'
+    | 'none'
 }
 
 export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
@@ -173,6 +191,27 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     align: 'right',
     defaultVisible: true,
     formatter: 'number',
+  },
+  // OI Trend = price-direction × OI-direction matrix. Visually sits
+  // next to OI/Volume since it's derived from them. Bias is the
+  // bullish/bearish summary tag.
+  {
+    key: 'ce_oi_trend',
+    label: 'OI Trend',
+    side: 'ce',
+    width: 'w-28',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'oi_trend',
+  },
+  {
+    key: 'ce_bias',
+    label: 'Bias',
+    side: 'ce',
+    width: 'w-20',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'bias',
   },
   {
     key: 'ce_bid_qty',
@@ -293,6 +332,26 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     formatter: 'number',
   },
+  // Mirror of CE: Bias then OI Trend so left-to-right reads
+  // Bid Qty → Bias → OI Trend → Volume → OI → Greeks.
+  {
+    key: 'pe_bias',
+    label: 'Bias',
+    side: 'pe',
+    width: 'w-20',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'bias',
+  },
+  {
+    key: 'pe_oi_trend',
+    label: 'OI Trend',
+    side: 'pe',
+    width: 'w-28',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'oi_trend',
+  },
   {
     key: 'pe_volume',
     label: 'Volume',
@@ -389,9 +448,85 @@ export const DEFAULT_PREFERENCES: OptionChainPreferences = {
   barStyle: 'gradient',
 }
 
-// Bumped from v1 → v2 when Greeks moved from the middle of each half
-// to the outer edges (CE leftmost, PE rightmost). Old stored
-// columnOrder values would otherwise keep the Greeks in the middle.
-// Bumping the key abandons the old prefs entirely, so every user gets
-// the new default layout on next page load.
-export const LOCALSTORAGE_KEY = 'openalgo_option_chain_prefs_v2'
+// Bumped on every structural column change so users picking up the
+// new build don't carry stale columnOrder from an older version that
+// would misplace the new columns. Each bump abandons the previous
+// stored prefs cleanly.
+//   v1 → v2: Greeks moved from middle to outer edges
+//   v2 → v3: OI Trend + Bias columns added per side
+export const LOCALSTORAGE_KEY = 'openalgo_option_chain_prefs_v3'
+
+// ---------------------------------------------------------------------
+// OI Trend classification — used by the OptionChain table to derive
+// "Long Buildup / Short Buildup / Long Unwinding / Short Covering" and
+// a bullish/bearish bias from price + OI direction.
+//
+// Rules (per option leg — same convention as Zerodha Sensibull, Opstra):
+//   Price ↑  + OI ↑  → Long Buildup     → Bullish
+//   Price ↑  + OI ↓  → Short Covering    → Bullish
+//   Price ↓  + OI ↑  → Short Buildup     → Bearish
+//   Price ↓  + OI ↓  → Long Unwinding    → Bearish
+//
+// Returns null/'-' fields when ltp / prev_close / oi / prev_oi are
+// missing or zero (no meaningful direction to compare).
+// ---------------------------------------------------------------------
+
+export type OiTrendLabel =
+  | 'Long Buildup'
+  | 'Short Buildup'
+  | 'Long Unwinding'
+  | 'Short Covering'
+  | '-'
+
+export type Bias = 'Bullish' | 'Bearish' | null
+
+export function classifyOiTrend(
+  ltp: number | null | undefined,
+  prevClose: number | null | undefined,
+  oi: number | null | undefined,
+  prevOi: number | null | undefined
+): { trend: OiTrendLabel; bias: Bias } {
+  if (
+    ltp == null ||
+    prevClose == null ||
+    oi == null ||
+    prevOi == null ||
+    ltp <= 0 ||
+    prevClose <= 0 ||
+    prevOi <= 0
+  ) {
+    return { trend: '-', bias: null }
+  }
+  const priceUp = ltp > prevClose
+  const priceDown = ltp < prevClose
+  const oiUp = oi > prevOi
+  const oiDown = oi < prevOi
+  if (priceUp && oiUp) return { trend: 'Long Buildup', bias: 'Bullish' }
+  if (priceUp && oiDown) return { trend: 'Short Covering', bias: 'Bullish' }
+  if (priceDown && oiUp) return { trend: 'Short Buildup', bias: 'Bearish' }
+  if (priceDown && oiDown) return { trend: 'Long Unwinding', bias: 'Bearish' }
+  return { trend: '-', bias: null }
+}
+
+// ---------------------------------------------------------------------
+// Auto-refresh interval options for the page-level dropdown. Values are
+// milliseconds — passed straight to useOptionChainLive's
+// oiRefreshInterval option. Labels match the user's UX request.
+// ---------------------------------------------------------------------
+
+export interface RefreshIntervalOption {
+  label: string
+  ms: number
+}
+
+export const REFRESH_INTERVAL_OPTIONS: RefreshIntervalOption[] = [
+  { label: '30 sec', ms: 30_000 },
+  { label: '1 min', ms: 60_000 },
+  { label: '3 min', ms: 180_000 },
+  { label: '5 min', ms: 300_000 },
+  { label: '15 min', ms: 900_000 },
+  { label: '30 min', ms: 1_800_000 },
+  { label: '1 hour', ms: 3_600_000 },
+]
+
+export const DEFAULT_REFRESH_INTERVAL_MS = 60_000  // 1 min

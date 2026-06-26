@@ -39,8 +39,13 @@ import { useOptionChainPreferences } from '@/hooks/useOptionChainPreferences'
 import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
-import type { BarDataSource, BarStyle, ColumnKey, OptionStrike } from '@/types/option-chain'
-import { COLUMN_DEFINITIONS } from '@/types/option-chain'
+import type { BarDataSource, BarStyle, Bias, ColumnKey, OptionStrike } from '@/types/option-chain'
+import {
+  COLUMN_DEFINITIONS,
+  DEFAULT_REFRESH_INTERVAL_MS,
+  REFRESH_INTERVAL_OPTIONS,
+  classifyOiTrend,
+} from '@/types/option-chain'
 import { showToast } from '@/utils/toast'
 
 // FNO_EXCHANGES and DEFAULT_UNDERLYINGS are now provided by useSupportedExchanges() hook
@@ -230,12 +235,44 @@ const OptionChainRow = React.memo(function OptionChainRow({
   // value is null so we don't visually emphasise missing data.
   const ivClass = 'text-muted-foreground'
 
+  // Derive OI Trend + Bias for each leg using the shared classifier.
+  // Computed once per row so both columns share the same result.
+  const ceTrendCalc = classifyOiTrend(ce?.ltp, ce?.prev_close, ce?.oi, ce?.prev_oi)
+  const peTrendCalc = classifyOiTrend(pe?.ltp, pe?.prev_close, pe?.oi, pe?.prev_oi)
+
+  // Colour the trend label so traders can scan the column at a glance:
+  // green = bullish, red = bearish, grey = no signal.
+  const trendBadgeClass = (bias: Bias) =>
+    bias === 'Bullish'
+      ? 'inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-500/10 text-green-600 dark:text-green-400'
+      : bias === 'Bearish'
+        ? 'inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-600 dark:text-red-400'
+        : 'inline-block px-1.5 py-0.5 rounded text-[10px] text-muted-foreground'
+  const biasBadgeClass = (bias: Bias) =>
+    bias === 'Bullish'
+      ? 'text-green-600 dark:text-green-400 font-semibold text-xs'
+      : bias === 'Bearish'
+        ? 'text-red-600 dark:text-red-400 font-semibold text-xs'
+        : 'text-muted-foreground text-xs'
+
   const getCeColumnValue = (key: ColumnKey) => {
     switch (key) {
       case 'ce_oi':
         return <span className={numClass}>{formatInLakhs(ce?.oi)}</span>
       case 'ce_volume':
         return <span className={numClass}>{formatInLakhs(ce?.volume)}</span>
+      case 'ce_oi_trend':
+        return (
+          <span className={trendBadgeClass(ceTrendCalc.bias)}>
+            {ceTrendCalc.trend}
+          </span>
+        )
+      case 'ce_bias':
+        return (
+          <span className={biasBadgeClass(ceTrendCalc.bias)}>
+            {ceTrendCalc.bias ?? '-'}
+          </span>
+        )
       case 'ce_iv':
         return <span className={cn(numClass, ivClass)}>{formatIv(ce?.iv)}</span>
       case 'ce_delta':
@@ -273,6 +310,18 @@ const OptionChainRow = React.memo(function OptionChainRow({
         return <span className={numClass}>{formatInLakhs(pe?.oi)}</span>
       case 'pe_volume':
         return <span className={numClass}>{formatInLakhs(pe?.volume)}</span>
+      case 'pe_oi_trend':
+        return (
+          <span className={trendBadgeClass(peTrendCalc.bias)}>
+            {peTrendCalc.trend}
+          </span>
+        )
+      case 'pe_bias':
+        return (
+          <span className={biasBadgeClass(peTrendCalc.bias)}>
+            {peTrendCalc.bias ?? '-'}
+          </span>
+        )
       case 'pe_iv':
         return <span className={cn(numClass, ivClass)}>{formatIv(pe?.iv)}</span>
       case 'pe_delta':
@@ -514,6 +563,13 @@ export default function OptionChain() {
   } = useOptionChainPreferences()
 
   const [selectedExchange, setSelectedExchange] = useState(defaultFnoExchange)
+  // Auto-refresh frequency for the option-chain poll. Threaded into
+  // useOptionChainLive via oiRefreshInterval. Default 1 min so the page
+  // doesn't hammer the broker by accident; user can crank up via the
+  // header dropdown.
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState<number>(
+    DEFAULT_REFRESH_INTERVAL_MS
+  )
   const [underlyings, setUnderlyings] = useState<string[]>(
     defaultUnderlyings[defaultFnoExchange] || []
   )
@@ -560,7 +616,11 @@ export default function OptionChain() {
     optionExchange,
     convertExpiryForAPI(selectedExpiry),
     strikeCount,
-    { enabled: !!selectedExpiry, oiRefreshInterval: 30000, pauseWhenHidden: true }
+    {
+      enabled: !!selectedExpiry,
+      oiRefreshInterval: refreshIntervalMs,
+      pauseWhenHidden: true,
+    }
   )
 
   // Fetch underlyings when exchange changes
@@ -804,6 +864,25 @@ export default function OptionChain() {
               {STRIKE_COUNTS.map((sc) => (
                 <SelectItem key={sc.value} value={String(sc.value)}>
                   {sc.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* Auto-refresh frequency selector. Drives oiRefreshInterval
+              passed to useOptionChainLive, which controls how often
+              the REST chain is re-polled (the WebSocket layer still
+              streams LTPs continuously). */}
+          <Select
+            value={String(refreshIntervalMs)}
+            onValueChange={(v) => setRefreshIntervalMs(Number(v))}
+          >
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Refresh" />
+            </SelectTrigger>
+            <SelectContent>
+              {REFRESH_INTERVAL_OPTIONS.map((opt) => (
+                <SelectItem key={opt.ms} value={String(opt.ms)}>
+                  {opt.label}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -638,6 +638,22 @@ def get_option_chain(
                     if greek_fns
                     else dict(_GREEK_FIELDS_EMPTY)
                 )
+                # prev_oi: yesterday's close OI. Broker response shapes
+                # vary — we accept any of these fallbacks. If a broker
+                # gives oi_change instead of prev_oi, derive prev_oi via
+                # subtraction. Missing data → None (so the FE renders
+                # OI Trend as '-' instead of mis-classifying).
+                _ce_oi_raw = ce_quote.get("oi", 0) or 0
+                _ce_prev_oi = (
+                    ce_quote.get("prev_oi")
+                    or ce_quote.get("previous_oi")
+                    or ce_quote.get("oi_yesterday")
+                    or (
+                        _ce_oi_raw - ce_quote["oi_change"]
+                        if ce_quote.get("oi_change") is not None
+                        else None
+                    )
+                )
                 strike_data["ce"] = {
                     "symbol": ce_symbol,
                     "label": item["ce"]["label"],
@@ -652,6 +668,7 @@ def get_option_chain(
                     "prev_close": ce_quote.get("prev_close", 0),
                     "volume": ce_quote.get("volume", 0),
                     "oi": ce_quote.get("oi", 0),
+                    "prev_oi": _ce_prev_oi,
                     "lotsize": item["ce"]["lotsize"],
                     "tick_size": item["ce"]["tick_size"],
                     **ce_greeks,
@@ -677,6 +694,17 @@ def get_option_chain(
                     if greek_fns
                     else dict(_GREEK_FIELDS_EMPTY)
                 )
+                _pe_oi_raw = pe_quote.get("oi", 0) or 0
+                _pe_prev_oi = (
+                    pe_quote.get("prev_oi")
+                    or pe_quote.get("previous_oi")
+                    or pe_quote.get("oi_yesterday")
+                    or (
+                        _pe_oi_raw - pe_quote["oi_change"]
+                        if pe_quote.get("oi_change") is not None
+                        else None
+                    )
+                )
                 strike_data["pe"] = {
                     "symbol": pe_symbol,
                     "label": item["pe"]["label"],
@@ -691,6 +719,7 @@ def get_option_chain(
                     "prev_close": pe_quote.get("prev_close", 0),
                     "volume": pe_quote.get("volume", 0),
                     "oi": pe_quote.get("oi", 0),
+                    "prev_oi": _pe_prev_oi,
                     "lotsize": item["pe"]["lotsize"],
                     "tick_size": item["pe"]["tick_size"],
                     **pe_greeks,
