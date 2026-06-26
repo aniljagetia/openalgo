@@ -107,28 +107,10 @@ export interface ColumnDefinition {
 }
 
 export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
-  // CE columns (left side) - ordered left to right
-  {
-    key: 'ce_oi',
-    label: 'OI',
-    side: 'ce',
-    width: 'w-20',
-    align: 'right',
-    defaultVisible: true,
-    formatter: 'number',
-  },
-  {
-    key: 'ce_volume',
-    label: 'Volume',
-    side: 'ce',
-    width: 'w-20',
-    align: 'right',
-    defaultVisible: true,
-    formatter: 'number',
-  },
-  // Black-76 Greeks (CE side, left-of-LTP). New columns — default
-  // visible per user request; toggle off via the column-config menu
-  // if the table gets too wide.
+  // CE columns (left side) - ordered left to right.
+  // Greeks sit at the very LEFT (top-left of the CE half) per user
+  // request — IV/Delta/Gamma/Theta/Vega first, then OI/Volume/quote
+  // columns, with Spread closest to the strike.
   {
     key: 'ce_iv',
     label: 'IV',
@@ -173,6 +155,24 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     align: 'right',
     defaultVisible: true,
     formatter: 'greek',
+  },
+  {
+    key: 'ce_oi',
+    label: 'OI',
+    side: 'ce',
+    width: 'w-20',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'number',
+  },
+  {
+    key: 'ce_volume',
+    label: 'Volume',
+    side: 'ce',
+    width: 'w-20',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'number',
   },
   {
     key: 'ce_bid_qty',
@@ -293,8 +293,28 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     formatter: 'number',
   },
-  // Black-76 Greeks (PE side, mirrored from the CE side so the
-  // two halves of the chain stay symmetric).
+  {
+    key: 'pe_volume',
+    label: 'Volume',
+    side: 'pe',
+    width: 'w-20',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'number',
+  },
+  {
+    key: 'pe_oi',
+    label: 'OI',
+    side: 'pe',
+    width: 'w-20',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'number',
+  },
+  // Black-76 Greeks pinned to the RIGHT edge of the PE half (the user's
+  // "top right" target). Mirror of the CE order — Vega is closest to OI,
+  // IV is the rightmost column on the page so the chain reads
+  // symmetrically with IV bookending both halves.
   {
     key: 'pe_vega',
     label: 'Vega',
@@ -340,24 +360,6 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     formatter: 'iv',
   },
-  {
-    key: 'pe_volume',
-    label: 'Volume',
-    side: 'pe',
-    width: 'w-20',
-    align: 'left',
-    defaultVisible: true,
-    formatter: 'number',
-  },
-  {
-    key: 'pe_oi',
-    label: 'OI',
-    side: 'pe',
-    width: 'w-20',
-    align: 'left',
-    defaultVisible: true,
-    formatter: 'number',
-  },
 ]
 
 export const DEFAULT_COLUMN_ORDER: ColumnKey[] = COLUMN_DEFINITIONS.map((col) => col.key)
@@ -387,4 +389,9 @@ export const DEFAULT_PREFERENCES: OptionChainPreferences = {
   barStyle: 'gradient',
 }
 
-export const LOCALSTORAGE_KEY = 'openalgo_option_chain_prefs'
+// Bumped from v1 → v2 when Greeks moved from the middle of each half
+// to the outer edges (CE leftmost, PE rightmost). Old stored
+// columnOrder values would otherwise keep the Greeks in the middle.
+// Bumping the key abandons the old prefs entirely, so every user gets
+// the new default layout on next page load.
+export const LOCALSTORAGE_KEY = 'openalgo_option_chain_prefs_v2'
