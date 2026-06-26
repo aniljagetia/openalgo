@@ -232,6 +232,39 @@ const OptionChainRow = React.memo(function OptionChainRow({
     v == null || Number.isNaN(v) ? '-' : `${v.toFixed(2)}%`
   const formatGreek = (v: number | null | undefined, dp = 4) =>
     v == null || Number.isNaN(v) ? '-' : v.toFixed(dp)
+
+  // LTP-change helpers: signed value, 2dp, green / red / muted by sign.
+  // Δ% adds the '%' suffix; both use the same colouring rule. Returns
+  // '-' when there's no usable prev_close baseline.
+  const formatLtpChg = (
+    ltp: number | null | undefined,
+    prevClose: number | null | undefined
+  ) => {
+    if (ltp == null || prevClose == null || prevClose <= 0) return '-'
+    const d = ltp - prevClose
+    const sign = d > 0 ? '+' : ''
+    return `${sign}${d.toFixed(2)}`
+  }
+  const formatLtpChgPct = (
+    ltp: number | null | undefined,
+    prevClose: number | null | undefined
+  ) => {
+    if (ltp == null || prevClose == null || prevClose <= 0) return '-'
+    const d = ltp - prevClose
+    const pct = (d / prevClose) * 100
+    const sign = pct > 0 ? '+' : ''
+    return `${sign}${pct.toFixed(2)}%`
+  }
+  const ltpChgColor = (
+    ltp: number | null | undefined,
+    prevClose: number | null | undefined
+  ) => {
+    if (ltp == null || prevClose == null || prevClose <= 0)
+      return 'text-muted-foreground'
+    if (ltp > prevClose) return 'text-green-600 dark:text-green-400'
+    if (ltp < prevClose) return 'text-red-600 dark:text-red-400'
+    return 'text-muted-foreground'
+  }
   // Greens for positive delta / negative theta — neutral grey when the
   // value is null so we don't visually emphasise missing data.
   const ivClass = 'text-muted-foreground'
@@ -298,6 +331,18 @@ const OptionChainRow = React.memo(function OptionChainRow({
             {formatPrice(ce?.ltp)}
           </span>
         )
+      case 'ce_ltp_chg':
+        return (
+          <span className={cn(numClass, ltpChgColor(ce?.ltp, ce?.prev_close))}>
+            {formatLtpChg(ce?.ltp, ce?.prev_close)}
+          </span>
+        )
+      case 'ce_ltp_chg_pct':
+        return (
+          <span className={cn(numClass, ltpChgColor(ce?.ltp, ce?.prev_close))}>
+            {formatLtpChgPct(ce?.ltp, ce?.prev_close)}
+          </span>
+        )
       case 'ce_ask':
         return <span className={cn(numClass, 'text-green-500')}>{formatPrice(ce?.ask)}</span>
       case 'ce_ask_qty':
@@ -341,6 +386,18 @@ const OptionChainRow = React.memo(function OptionChainRow({
         return <span className={numClass}>{pe?.bid_qty ?? 0}</span>
       case 'pe_bid':
         return <span className={cn(numClass, 'text-red-500')}>{formatPrice(pe?.bid)}</span>
+      case 'pe_ltp_chg':
+        return (
+          <span className={cn(numClass, ltpChgColor(pe?.ltp, pe?.prev_close))}>
+            {formatLtpChg(pe?.ltp, pe?.prev_close)}
+          </span>
+        )
+      case 'pe_ltp_chg_pct':
+        return (
+          <span className={cn(numClass, ltpChgColor(pe?.ltp, pe?.prev_close))}>
+            {formatLtpChgPct(pe?.ltp, pe?.prev_close)}
+          </span>
+        )
       case 'pe_ltp':
         return (
           <span className={cn(numClass, 'font-semibold', peFlashClass)}>

@@ -84,6 +84,8 @@ export type ColumnKey =
   | 'ce_bid_qty'
   | 'ce_bid'
   | 'ce_ltp'
+  | 'ce_ltp_chg'
+  | 'ce_ltp_chg_pct'
   | 'ce_ask'
   | 'ce_ask_qty'
   | 'ce_spread'
@@ -92,6 +94,8 @@ export type ColumnKey =
   | 'pe_ask_qty'
   | 'pe_ask'
   | 'pe_ltp'
+  | 'pe_ltp_chg'
+  | 'pe_ltp_chg_pct'
   | 'pe_bid'
   | 'pe_bid_qty'
   | 'pe_bias'
@@ -121,6 +125,8 @@ export interface ColumnDefinition {
     | 'iv'
     | 'oi_trend'
     | 'bias'
+    | 'ltp_chg'
+    | 'ltp_chg_pct'
     | 'none'
 }
 
@@ -241,6 +247,27 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     formatter: 'price',
   },
+  // LTP-change columns sit immediately after LTP so a trader's eye
+  // moves LTP → Δ → Δ% on the same axis. Signed values are coloured
+  // green/red so the column reads as a heat strip.
+  {
+    key: 'ce_ltp_chg',
+    label: 'LTP Chg',
+    side: 'ce',
+    width: 'w-16',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'ltp_chg',
+  },
+  {
+    key: 'ce_ltp_chg_pct',
+    label: 'LTP Chg %',
+    side: 'ce',
+    width: 'w-20',
+    align: 'right',
+    defaultVisible: true,
+    formatter: 'ltp_chg_pct',
+  },
   {
     key: 'ce_ask',
     label: 'Ask',
@@ -314,6 +341,27 @@ export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     align: 'left',
     defaultVisible: true,
     formatter: 'price',
+  },
+  // Mirror of CE LTP-change columns. Reference screenshot puts these
+  // immediately after PE LTP so the trader can compare CE Δ ↔ PE Δ
+  // either side of the strike at a glance.
+  {
+    key: 'pe_ltp_chg',
+    label: 'LTP Chg',
+    side: 'pe',
+    width: 'w-16',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'ltp_chg',
+  },
+  {
+    key: 'pe_ltp_chg_pct',
+    label: 'LTP Chg %',
+    side: 'pe',
+    width: 'w-20',
+    align: 'left',
+    defaultVisible: true,
+    formatter: 'ltp_chg_pct',
   },
   {
     key: 'pe_bid',
@@ -454,7 +502,8 @@ export const DEFAULT_PREFERENCES: OptionChainPreferences = {
 //   v2 → v3: OI Trend + Bias columns added per side
 //   v3 → v4: Build Up + Trend moved to outermost edge (matching ref
 //            screenshot); Greeks reordered to Vega→IV
-export const LOCALSTORAGE_KEY = 'openalgo_option_chain_prefs_v4'
+//   v4 → v5: LTP Chg + LTP Chg % columns added per side
+export const LOCALSTORAGE_KEY = 'openalgo_option_chain_prefs_v5'
 
 // Short two-letter codes for the OI Trend column, matching the
 // reference screenshot (LB / SB / LU / SC). Mapped from the long
