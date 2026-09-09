@@ -15,6 +15,13 @@ export interface Tool {
 
 export const tools: Tool[] = [
   {
+    title: 'Nifty Bias Dashboard',
+    description:
+      'Probability Nifty closes higher, scored live from option chain, technicals, volatility and global cues with a plain-English explanation of every signal',
+    href: '/niftybias',
+    color: 'bg-purple-500',
+  },
+  {
     title: 'Strategy Builder',
     description:
       'Build multi-leg option strategies with live Greeks, payoff diagram and what-if simulators',
@@ -131,12 +138,5 @@ export const tools: Tool[] = [
       'Realtime futures calendar-spread scanner across NFO & MCX, ranked by executable bid/ask spread % with one-click two-leg orders',
     href: '/arbitrage',
     color: 'bg-green-600',
-  },
-  {
-    title: 'Nifty Bias Dashboard',
-    description:
-      'Probability Nifty closes higher, scored live from option chain, technicals, volatility and global cues with a plain-English explanation of every signal',
-    href: '/niftybias',
-    color: 'bg-purple-500',
   },
 ]
