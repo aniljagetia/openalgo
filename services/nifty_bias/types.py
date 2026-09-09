@@ -89,6 +89,11 @@ class MarketContext:
         candles: 5-minute candles for the INDEX (no volume -- see notes).
         futures_candles: 5-minute candles for the near future (has volume+OI).
         prev_chain: The previous stored chain snapshot, for OI deltas.
+        constituents: Heavyweight constituent quotes, for breadth/contribution.
+        banknifty_ltp: BANKNIFTY last price, for the financials divergence.
+        banknifty_prev_close: BANKNIFTY previous close.
+        global_cues: Yahoo-sourced global cues keyed by cue id.
+        fii_dii: Latest FII/DII net cash in crore, or None when unavailable.
         source: ``"live"`` or ``"mock"``.
         errors: Non-fatal fetch problems, surfaced in the UI data-health strip.
     """
@@ -104,6 +109,11 @@ class MarketContext:
     candles: list[dict[str, Any]] = field(default_factory=list)
     futures_candles: list[dict[str, Any]] = field(default_factory=list)
     prev_chain: list[dict[str, Any]] = field(default_factory=list)
+    constituents: dict[str, dict[str, Any]] = field(default_factory=dict)
+    banknifty_ltp: float | None = None
+    banknifty_prev_close: float | None = None
+    global_cues: dict[str, dict[str, Any]] = field(default_factory=dict)
+    fii_dii: dict[str, float] | None = None
     source: str = "live"
     errors: list[str] = field(default_factory=list)
 

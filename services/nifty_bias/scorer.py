@@ -13,6 +13,7 @@ Two rules keep the output honest:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .types import (
@@ -31,12 +32,53 @@ GROUP_WEIGHTS: dict[str, float] = {
     GROUP_GLOBAL: 0.25,
 }
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
 GROUP_LABELS: dict[str, str] = {
     GROUP_OPTION_CHAIN: "Option Chain",
     GROUP_TECHNICAL: "Technicals",
     GROUP_VOLATILITY: "Volatility",
     GROUP_GLOBAL: "Global & Flows",
 }
+
+
+SESSION_OPEN_MINUTES = 9 * 60 + 15
+SESSION_CLOSE_MINUTES = 15 * 60 + 30
+
+# How much of the global group's weight has decayed away by the close. Global
+# cues set the opening direction; by mid-afternoon the session has developed
+# its own information and overnight Dow matters far less.
+GLOBAL_DECAY_AT_CLOSE = 0.65
+
+
+def session_progress(now: datetime | None = None) -> float:
+    """Fraction of the trading session elapsed, clamped to [0, 1]."""
+    now = now or datetime.now(IST)
+    minutes = now.hour * 60 + now.minute
+    span = SESSION_CLOSE_MINUTES - SESSION_OPEN_MINUTES
+    return max(0.0, min(1.0, (minutes - SESSION_OPEN_MINUTES) / span))
+
+
+def effective_weights(now: datetime | None = None) -> dict[str, float]:
+    """Group weights after time-decaying the global group.
+
+    Weight shed by the global group is handed to the option chain, which grows
+    *more* informative as the session develops. Total weight is preserved, so
+    the composite stays comparable across the day.
+
+    Args:
+        now: Override for testing; defaults to now in IST.
+
+    Returns:
+        Group key -> weight, summing to the same total as ``GROUP_WEIGHTS``.
+    """
+    weights = dict(GROUP_WEIGHTS)
+    progress = session_progress(now)
+    original = GROUP_WEIGHTS[GROUP_GLOBAL]
+    decayed = original * (1.0 - GLOBAL_DECAY_AT_CLOSE * progress)
+    weights[GROUP_GLOBAL] = decayed
+    weights[GROUP_OPTION_CHAIN] += original - decayed
+    return weights
 
 
 def _label_for(score: float, confidence: float) -> str:
@@ -75,11 +117,19 @@ def score_group(signals: list[SignalResult]) -> tuple[float | None, float]:
     return weighted, fraction
 
 
-def aggregate(signals: list[SignalResult]) -> dict[str, Any]:
+def aggregate(
+    signals: list[SignalResult],
+    now: datetime | None = None,
+    gate: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Combine all signals into the dashboard's headline reading.
 
     Args:
         signals: Every signal from every group.
+        now: Override for the session clock, used by the weight decay.
+        gate: Optional event gate from ``events.active_gate()``. Its multiplier
+            reduces confidence and damps the composite toward neutral, because
+            ahead of a scheduled event the other signals are not trustworthy.
 
     Returns:
         A dict with the composite score, probability, label, confidence and a
@@ -88,8 +138,9 @@ def aggregate(signals: list[SignalResult]) -> dict[str, Any]:
     groups: list[dict[str, Any]] = []
     live_weight = 0.0
     weighted_sum = 0.0
+    weights = effective_weights(now)
 
-    for key, group_weight in GROUP_WEIGHTS.items():
+    for key, group_weight in weights.items():
         members = [s for s in signals if s.group == key]
         group_score, resolved_fraction = score_group(members)
         if group_score is not None:
@@ -107,7 +158,14 @@ def aggregate(signals: list[SignalResult]) -> dict[str, Any]:
         )
 
     composite = weighted_sum / live_weight if live_weight > 0 else 0.0
-    confidence = live_weight / sum(GROUP_WEIGHTS.values())
+    confidence = live_weight / sum(weights.values())
+
+    # A pending event damps both the conviction and the reading itself. This is
+    # the one place the model is deliberately made less sure.
+    gate_multiplier = float((gate or {}).get("multiplier", 1.0))
+    if gate_multiplier < 1.0:
+        composite *= gate_multiplier
+        confidence *= gate_multiplier
 
     # Contribution is what each group actually added to the composite, so the
     # bars in the UI sum to the headline number rather than merely ranking.
@@ -120,6 +178,8 @@ def aggregate(signals: list[SignalResult]) -> dict[str, Any]:
     probability_up = max(0.0, min(1.0, 0.5 + composite / 2.0))
 
     return {
+        "gate": gate or {"multiplier": 1.0, "events": [], "note": ""},
+        "weights": {k: round(v, 4) for k, v in weights.items()},
         "composite_score": round(composite, 4),
         "probability_up": round(probability_up, 4),
         "confidence": round(confidence, 4),

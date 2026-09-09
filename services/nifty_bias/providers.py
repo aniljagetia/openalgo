@@ -28,9 +28,11 @@ from typing import Any, Protocol
 from services.expiry_service import get_expiry_dates
 from services.history_service import get_history
 from services.option_chain_service import get_option_chain
-from services.quotes_service import get_quotes
+from services.quotes_service import get_multiquotes, get_quotes
 from utils.logging import get_logger
 
+from .constituents import BANKNIFTY_SYMBOL, EQUITY_EXCHANGE, NIFTY_HEAVYWEIGHTS
+from .external import get_fii_dii, get_global_cues
 from .types import MarketContext
 
 logger = get_logger(__name__)
@@ -128,8 +130,28 @@ class OpenAlgoProvider:
             return []
         return payload.get("data") or []
 
+    def _multi(self, pairs: list[dict[str, str]]) -> dict[str, dict[str, Any]]:
+        """Fetch many quotes in one broker round-trip.
+
+        Args:
+            pairs: ``[{"symbol": ..., "exchange": ...}, ...]``.
+
+        Returns:
+            Mapping of symbol -> quote data. Missing symbols are simply absent.
+        """
+        ok, payload, _ = get_multiquotes(symbols=pairs, api_key=self.api_key)
+        if not ok:
+            logger.warning(f"multiquotes failed: {payload.get('message')}")
+            return {}
+        out: dict[str, dict[str, Any]] = {}
+        for row in payload.get("results") or []:
+            symbol, data = row.get("symbol"), row.get("data")
+            if symbol and isinstance(data, dict):
+                out[symbol] = data
+        return out
+
     def fetch_context(self, prev_chain: list[dict[str, Any]] | None = None) -> MarketContext:
-        """Fetch spot, VIX, option chain, index candles and futures candles."""
+        """Fetch spot, VIX, chain, candles, constituents and external cues."""
         ctx = MarketContext(source=self.source, prev_chain=list(prev_chain or []))
 
         option_expiries = self._expiries("options")
@@ -176,6 +198,30 @@ class OpenAlgoProvider:
             ctx.futures_candles = self._candles(futures_symbol(futures_expiries[0]), FNO_EXCHANGE)
         if not ctx.futures_candles:
             ctx.errors.append("Futures candles unavailable; VWAP signal disabled.")
+
+        # Heavyweights + BANKNIFTY in a single round-trip. Financials are
+        # ~30-35% of the index, so their behaviour relative to the headline
+        # number is the difference between a broad move and a narrow one.
+        pairs = [{"symbol": s, "exchange": EQUITY_EXCHANGE} for s in NIFTY_HEAVYWEIGHTS]
+        pairs.append({"symbol": BANKNIFTY_SYMBOL, "exchange": SPOT_EXCHANGE})
+        quotes = self._multi(pairs)
+        bank = quotes.pop(BANKNIFTY_SYMBOL, {})
+        ctx.banknifty_ltp = bank.get("ltp")
+        ctx.banknifty_prev_close = bank.get("prev_close")
+        ctx.constituents = quotes
+        if not ctx.constituents:
+            ctx.errors.append("Constituent quotes unavailable; breadth signals disabled.")
+
+        ctx.global_cues = get_global_cues()
+        if not ctx.global_cues:
+            ctx.errors.append("Global cues unavailable (Yahoo unreachable).")
+
+        ctx.fii_dii = get_fii_dii()
+        if ctx.fii_dii is None:
+            ctx.errors.append(
+                "FII/DII unavailable -- NSE rate-limits datacenter IPs, so this "
+                "often fails from the VPS."
+            )
 
         return ctx
 

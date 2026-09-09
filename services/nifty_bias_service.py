@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
+from services.nifty_bias.events import active_gate
 from services.nifty_bias.providers import DataProvider, MockProvider, OpenAlgoProvider
 from services.nifty_bias.scorer import aggregate, narrate
 from services.nifty_bias.signals import compute_all
@@ -123,7 +124,10 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
     ctx = provider.fetch_context(prev_chain=_last_chain)
 
     signals = compute_all(ctx)
-    result = aggregate(signals)
+    gate = active_gate()
+    result = aggregate(signals, gate=gate)
+    if gate["note"]:
+        ctx.errors.append(gate["note"])
 
     # Only remember a chain we actually got, or we would wipe the baseline
     # that OI deltas depend on every time a fetch fails.
@@ -152,7 +156,9 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
         "composite_score": result["composite_score"],
         "confidence": result["confidence"],
         "label": result["label"],
-        "narrative": narrate(result),
+        "narrative": (narrate(result) + (" " + gate["note"] if gate["note"] else "")),
+        "gate": result["gate"],
+        "weights": result["weights"],
         "groups": result["groups"],
         "levels": _levels(signals),
         "chain": _chain_rows(ctx),

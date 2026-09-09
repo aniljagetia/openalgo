@@ -18,6 +18,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from .constituents import FINANCIAL_NAMES, NIFTY_HEAVYWEIGHTS
 from .types import (
     GROUP_GLOBAL,
     GROUP_OPTION_CHAIN,
@@ -476,6 +477,136 @@ def prev_day_levels(ctx: MarketContext) -> SignalResult:
 
 
 # --------------------------------------------------------------------------
+# Group B (continued) -- market internals
+# --------------------------------------------------------------------------
+
+
+def _constituent_moves(ctx: MarketContext) -> dict[str, float]:
+    """Percent change per tracked constituent, skipping unusable quotes."""
+    moves: dict[str, float] = {}
+    for symbol, quote in ctx.constituents.items():
+        ltp, prev = _num(quote.get("ltp")), _num(quote.get("prev_close"))
+        if ltp is None or not prev:
+            continue
+        moves[symbol] = (ltp - prev) / prev * 100.0
+    return moves
+
+
+def heavyweight_contribution(ctx: MarketContext) -> SignalResult:
+    """Weighted contribution of the index heavyweights.
+
+    Answers a question the headline number cannot: is this move broad, or is
+    it one or two large names? A rally carried entirely by Reliance is far
+    more fragile than the same rally with fifteen names participating.
+    """
+    moves = _constituent_moves(ctx)
+    if not moves:
+        return SignalResult(
+            "Heavyweight Push", GROUP_TECHNICAL, None, 1.0, "Constituent quotes unavailable."
+        )
+    weight_sum = sum(NIFTY_HEAVYWEIGHTS[s] for s in moves if s in NIFTY_HEAVYWEIGHTS)
+    if weight_sum <= 0:
+        return SignalResult("Heavyweight Push", GROUP_TECHNICAL, None, 1.0, "No weights matched.")
+    weighted_move = (
+        sum(moves[s] * NIFTY_HEAVYWEIGHTS[s] for s in moves if s in NIFTY_HEAVYWEIGHTS)
+        / weight_sum
+    )
+    score = _bounded(weighted_move, 0.8)
+    leader = max(moves, key=lambda s: abs(moves[s]) * NIFTY_HEAVYWEIGHTS.get(s, 0.0))
+    return SignalResult(
+        "Heavyweight Push",
+        GROUP_TECHNICAL,
+        score,
+        1.0,
+        f"Weighted heavyweight move {weighted_move:+.2f}% across {len(moves)} names; "
+        f"{leader} is the biggest mover ({moves[leader]:+.2f}%).",
+        {"weighted_move": round(weighted_move, 3), "leader": leader, "tracked": len(moves)},
+    )
+
+
+def advance_decline(ctx: MarketContext) -> SignalResult:
+    """Breadth: how many heavyweights advance versus decline.
+
+    A narrow move -- index up while most names are down -- is the classic
+    warning that the headline number is not supported underneath it.
+    """
+    moves = _constituent_moves(ctx)
+    if not moves:
+        return SignalResult(
+            "Breadth (A/D)", GROUP_TECHNICAL, None, 0.9, "Constituent quotes unavailable."
+        )
+    advancing = sum(1 for m in moves.values() if m > 0)
+    declining = sum(1 for m in moves.values() if m < 0)
+    total = advancing + declining
+    if total == 0:
+        return SignalResult("Breadth (A/D)", GROUP_TECHNICAL, None, 0.9, "No net movers.")
+    score = (advancing - declining) / total
+    note = f"{advancing} advancing vs {declining} declining among tracked heavyweights."
+    # Divergence is the whole point of a breadth read, so name it explicitly.
+    if ctx.spot_change_pct is not None:
+        if ctx.spot_change_pct > 0 and score < -0.2:
+            note += " Index up on narrow participation -- a fragile advance."
+        elif ctx.spot_change_pct < 0 and score > 0.2:
+            note += " Index down while most names rise -- selling is concentrated."
+    return SignalResult(
+        "Breadth (A/D)",
+        GROUP_TECHNICAL,
+        score,
+        0.9,
+        note,
+        {"advancing": advancing, "declining": declining},
+    )
+
+
+def banknifty_divergence(ctx: MarketContext) -> SignalResult:
+    """BankNifty leading or lagging Nifty.
+
+    Financials are roughly a third of the index, so banks outrunning the index
+    tends to pull it along, and banks lagging tends to cap it.
+    """
+    if not ctx.banknifty_ltp or not ctx.banknifty_prev_close:
+        return SignalResult(
+            "BankNifty Lead", GROUP_TECHNICAL, None, 0.9, "BANKNIFTY quote unavailable."
+        )
+    bank_pct = (ctx.banknifty_ltp - ctx.banknifty_prev_close) / ctx.banknifty_prev_close * 100.0
+    nifty_pct = ctx.spot_change_pct
+    if nifty_pct is None:
+        return SignalResult("BankNifty Lead", GROUP_TECHNICAL, None, 0.9, "Nifty change unknown.")
+    spread = bank_pct - nifty_pct
+    verb = "leading" if spread > 0 else "lagging"
+    return SignalResult(
+        "BankNifty Lead",
+        GROUP_TECHNICAL,
+        _bounded(spread, 0.5),
+        0.9,
+        f"BankNifty {bank_pct:+.2f}% vs Nifty {nifty_pct:+.2f}% -- financials {verb} "
+        f"by {abs(spread):.2f}pp.",
+        {"banknifty_pct": round(bank_pct, 3), "spread": round(spread, 3)},
+    )
+
+
+def financials_tilt(ctx: MarketContext) -> SignalResult:
+    """Financial names versus the rest of the tracked heavyweights."""
+    moves = _constituent_moves(ctx)
+    fins = {s: m for s, m in moves.items() if s in FINANCIAL_NAMES}
+    rest = {s: m for s, m in moves.items() if s not in FINANCIAL_NAMES}
+    if not fins or not rest:
+        return SignalResult(
+            "Financials Tilt", GROUP_TECHNICAL, None, 0.6, "Not enough constituent quotes."
+        )
+    fin_avg = sum(fins.values()) / len(fins)
+    rest_avg = sum(rest.values()) / len(rest)
+    return SignalResult(
+        "Financials Tilt",
+        GROUP_TECHNICAL,
+        _bounded(fin_avg - rest_avg, 0.6),
+        0.6,
+        f"Financials {fin_avg:+.2f}% vs rest {rest_avg:+.2f}%.",
+        {"financials_avg": round(fin_avg, 3), "rest_avg": round(rest_avg, 3)},
+    )
+
+
+# --------------------------------------------------------------------------
 # Group C -- Volatility (15%)
 # --------------------------------------------------------------------------
 
@@ -532,30 +663,96 @@ def vix_percentile(ctx: MarketContext) -> SignalResult:
 
 
 def global_cues(ctx: MarketContext) -> SignalResult:
-    """Global risk proxies. Requires yfinance, wired in a later step."""
+    """Aggregate overnight and offshore risk cues.
+
+    Each cue carries a sign for whether a *rise* in it is bullish for Nifty:
+    equities positive, dollar/yields/crude negative. These set the opening
+    direction more than anything else on the board, which is why the scorer
+    decays the group's weight as the session ages.
+    """
+    cues = ctx.global_cues
+    if not cues:
+        return SignalResult("Global Cues", GROUP_GLOBAL, None, 1.4, "Global cue feed unavailable.")
+    weighted = total_w = 0.0
+    for cue in cues.values():
+        change = _num(cue.get("change_pct"))
+        if change is None:
+            continue
+        weight = float(cue.get("weight", 1.0))
+        weighted += _bounded(change * float(cue.get("direction", 1)), 1.0) * weight
+        total_w += weight
+    if total_w <= 0:
+        return SignalResult("Global Cues", GROUP_GLOBAL, None, 1.4, "No usable cues.")
+    movers = sorted(
+        cues.values(), key=lambda c: abs(_num(c.get("change_pct")) or 0.0), reverse=True
+    )[:3]
+    detail = ", ".join(
+        "{} {:+.2f}%".format(c["label"], _num(c.get("change_pct")) or 0.0) for c in movers
+    )
     return SignalResult(
         "Global Cues",
         GROUP_GLOBAL,
-        None,
-        1.0,
-        "S&P/Nasdaq futures, DXY, US 10Y, Brent and GIFT Nifty come from "
-        "yfinance; not yet wired.",
+        weighted / total_w,
+        1.4,
+        f"{len(cues)} cues tracked; {detail}.",
+        {"cues": cues},
+    )
+
+
+def usd_inr(ctx: MarketContext) -> SignalResult:
+    """USD/INR. A weakening rupee pressures Indian equities."""
+    cue = ctx.global_cues.get("usdinr") or {}
+    change = _num(cue.get("change_pct"))
+    last = _num(cue.get("last"))
+    if change is None or last is None:
+        return SignalResult("USD/INR", GROUP_GLOBAL, None, 0.8, "USD/INR unavailable.")
+    verb = "weaker" if change > 0 else "stronger"
+    return SignalResult(
+        "USD/INR",
+        GROUP_GLOBAL,
+        -_bounded(change, 0.4),
+        0.8,
+        f"Rupee {verb}: USD/INR {last:.2f} ({change:+.2f}%).",
+        {"usdinr": last, "change_pct": round(change, 3)},
     )
 
 
 def fii_dii_flows(ctx: MarketContext) -> SignalResult:
     """Previous-session FII/DII net cash.
 
-    There is no source for this in OpenAlgo or yfinance. It stays permanently
-    unresolved until a source is chosen, and its weight is redistributed.
+    The single biggest day-to-day swing factor. FII net buying scores bullish;
+    DII flows are weighted lower because they often merely absorb FII selling
+    rather than express an independent view.
     """
+    flows = ctx.fii_dii
+    if not flows:
+        return SignalResult(
+            "FII/DII Flows",
+            GROUP_GLOBAL,
+            None,
+            1.2,
+            "NSE flow data unavailable -- NSE rate-limits datacenter IPs, so this "
+            "commonly fails from a VPS.",
+        )
+    fii, dii = flows.get("fii_net"), flows.get("dii_net")
+    if fii is None and dii is None:
+        return SignalResult("FII/DII Flows", GROUP_GLOBAL, None, 1.2, "No net values parsed.")
+    # Rupees crore; a +/-2000cr day is decisive.
+    score = 0.0
+    parts = []
+    if fii is not None:
+        score += _bounded(fii, 2000.0) * 0.75
+        parts.append(f"FII {fii:+,.0f} cr")
+    if dii is not None:
+        score += _bounded(dii, 2000.0) * 0.25
+        parts.append(f"DII {dii:+,.0f} cr")
     return SignalResult(
         "FII/DII Flows",
         GROUP_GLOBAL,
-        None,
-        1.0,
-        "No data source available in OpenAlgo or yfinance -- needs an NSE feed "
-        "or manual entry.",
+        max(-1.0, min(1.0, score)),
+        1.2,
+        f"Previous session: {', '.join(parts)}.",
+        {"fii_net": fii, "dii_net": dii},
     )
 
 
@@ -572,10 +769,15 @@ ALL_SIGNALS = [
     vwap,
     opening_range,
     prev_day_levels,
+    heavyweight_contribution,
+    advance_decline,
+    banknifty_divergence,
+    financials_tilt,
     vix_change,
     vix_level,
     vix_percentile,
     global_cues,
+    usd_inr,
     fii_dii_flows,
 ]
 

@@ -1,0 +1,25 @@
+[
+  {
+    "date": "2026-10-08",
+    "time": "10:00",
+    "name": "RBI MPC decision",
+    "severity": "high"
+  },
+  {
+    "date": "2026-09-17",
+    "time": "23:30",
+    "name": "US Fed rate decision",
+    "severity": "high"
+  },
+  {
+    "date": "2026-09-12",
+    "time": "17:30",
+    "name": "India CPI inflation",
+    "severity": "medium"
+  },
+  {
+    "date": "2026-09-30",
+    "name": "MSCI index review effective",
+    "severity": "medium"
+  }
+]
