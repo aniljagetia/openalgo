@@ -79,6 +79,7 @@ from blueprints.master_contract_status import (
     master_contract_status_bp,  # Import the master contract status blueprint
 )
 from blueprints.oiprofile import oiprofile_bp  # Import the OI Profile blueprint
+from blueprints.nifty_bias import nifty_bias_bp  # Import the Nifty Bias dashboard blueprint
 from blueprints.oitracker import oitracker_bp  # Import the OI tracker blueprint
 from blueprints.orders import orders_bp
 from blueprints.platforms import platforms_bp
@@ -329,6 +330,7 @@ def create_app():
     app.register_blueprint(scalping_bp)  # Register Scalping terminal blueprint
     app.register_blueprint(watchlist_bp)  # Register charting watchlist blueprint
     app.register_blueprint(oitracker_bp)  # Register OI tracker blueprint
+    app.register_blueprint(nifty_bias_bp)  # Register Nifty Bias dashboard blueprint
     app.register_blueprint(gamma_density_bp)  # Register Gamma Density blueprint
     app.register_blueprint(straddle_bp)  # Register straddle chart blueprint
     app.register_blueprint(strategy_chart_bp)  # Register strategy chart blueprint

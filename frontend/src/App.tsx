@@ -72,6 +72,7 @@ const OITracker = lazy(() => import('@/pages/OITracker'))
 const OIRange = lazy(() => import('@/pages/OIRange'))
 const GammaDensity = lazy(() => import('@/pages/GammaDensity'))
 const MaxPain = lazy(() => import('@/pages/MaxPain'))
+const NiftyBias = lazy(() => import('@/pages/NiftyBias'))
 const StraddleChart = lazy(() => import('@/pages/StraddleChart'))
 const CustomStraddle = lazy(() => import('@/pages/CustomStraddle'))
 const VolSurface = lazy(() => import('@/pages/VolSurface'))
@@ -226,6 +227,7 @@ function App() {
                 <Route path="/oirange" element={<OIRange />} />
                 <Route path="/gammadensity" element={<GammaDensity />} />
                 <Route path="/maxpain" element={<MaxPain />} />
+                <Route path="/niftybias" element={<NiftyBias />} />
                 <Route path="/straddle" element={<StraddleChart />} />
                 <Route path="/straddlepnl" element={<CustomStraddle />} />
                 <Route path="/volsurface" element={<VolSurface />} />

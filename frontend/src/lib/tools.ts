@@ -132,4 +132,11 @@ export const tools: Tool[] = [
     href: '/arbitrage',
     color: 'bg-green-600',
   },
+  {
+    title: 'Nifty Bias Dashboard',
+    description:
+      'Probability Nifty closes higher, scored live from option chain, technicals, volatility and global cues with a plain-English explanation of every signal',
+    href: '/niftybias',
+    color: 'bg-purple-500',
+  },
 ]

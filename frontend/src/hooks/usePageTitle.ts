@@ -33,6 +33,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/oirange': 'OI Range',
   '/gammadensity': 'Gamma Density',
   '/maxpain': 'Max Pain',
+  '/niftybias': 'Nifty Bias Dashboard',
   '/straddle': 'Straddle Chart',
   '/straddlepnl': 'Straddle P&L',
   '/volsurface': 'Vol Surface',
