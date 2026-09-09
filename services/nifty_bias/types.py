@@ -108,6 +108,8 @@ class MarketContext:
     chain: list[dict[str, Any]] = field(default_factory=list)
     candles: list[dict[str, Any]] = field(default_factory=list)
     futures_candles: list[dict[str, Any]] = field(default_factory=list)
+    minute_candles: list[dict[str, Any]] = field(default_factory=list)
+    banknifty_minutes: list[dict[str, Any]] = field(default_factory=list)
     prev_chain: list[dict[str, Any]] = field(default_factory=list)
     constituents: dict[str, dict[str, Any]] = field(default_factory=dict)
     banknifty_ltp: float | None = None

@@ -7,11 +7,13 @@ so it can be scheduled headlessly later without touching Flask.
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
 from services.nifty_bias.constituents import NIFTY_HEAVYWEIGHTS
 from services.nifty_bias.events import active_gate, upcoming
+from services.nifty_bias.momentum import alignment, timeframe_table
 from services.nifty_bias.providers import DataProvider, MockProvider, OpenAlgoProvider
 from services.nifty_bias.scorer import aggregate, narrate
 from services.nifty_bias.signals import compute_all
@@ -27,6 +29,36 @@ MARKET_CLOSE = time(15, 30)
 # The last chain snapshot, kept in memory so OI deltas work between polls
 # without a database round-trip. Persistence lands with the collector.
 _last_chain: list[dict[str, Any]] = []
+
+# Rolling (epoch_seconds, probability_up) history so the page can show whether
+# the reading is strengthening or fading. In-memory and single-worker only:
+# it resets on restart. Durable history arrives with the collector.
+_bias_history: deque[tuple[float, float]] = deque(maxlen=400)
+
+
+def _bias_deltas(now_ts: float) -> list[dict[str, Any]]:
+    """Change in P(up), in percentage points, over 1/3/5/15 minutes.
+
+    Returns None for a window with no observation old enough, rather than 0 --
+    the page must not imply the reading was flat when it simply was not
+    running yet.
+    """
+    out = []
+    for minutes in (1, 3, 5, 15):
+        cutoff = now_ts - minutes * 60
+        past = next((p for ts, p in _bias_history if ts <= cutoff), None)
+        current = _bias_history[-1][1] if _bias_history else None
+        out.append(
+            {
+                "label": f"{minutes}m",
+                "delta_pp": (
+                    None
+                    if past is None or current is None
+                    else round((current - past) * 100.0, 2)
+                ),
+            }
+        )
+    return out
 
 
 def market_status(now: datetime | None = None) -> str:
@@ -156,6 +188,10 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
     if gate["note"]:
         ctx.errors.append(gate["note"])
 
+    now_ts = datetime.now(IST).timestamp()
+    _bias_history.append((now_ts, result["probability_up"]))
+    tf_rows = timeframe_table(ctx.minute_candles, ctx.banknifty_minutes)
+
     # Only remember a chain we actually got, or we would wipe the baseline
     # that OI deltas depend on every time a fetch fails.
     if ctx.chain:
@@ -188,6 +224,9 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
             ),
         },
         "constituents": _constituent_rows(ctx),
+        "timeframes": tf_rows,
+        "alignment": alignment(tf_rows),
+        "bias_deltas": _bias_deltas(now_ts),
         "events": upcoming(),
         "expiry": ctx.expiry,
         "atm_strike": ctx.atm_strike,

@@ -47,6 +47,16 @@ interface BiasResponse {
     contribution: number | null
   }[]
   events: { name: string; severity: string; kind: string; when: string; days_away: number }[]
+  timeframes: {
+    label: string
+    minutes: number
+    nifty_pct: number | null
+    banknifty_pct: number | null
+    direction: string | null
+    banks_agree: boolean | null
+  }[]
+  alignment: { state: string; score: number | null; note: string }
+  bias_deltas: { label: string; delta_pp: number | null }[]
   expiry: string | null
   atm_strike: number | null
   probability_up: number
@@ -266,6 +276,88 @@ export default function NiftyBias() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Multi-timeframe momentum */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
+            <span>Momentum by timeframe</span>
+            <Badge
+              variant={
+                data.alignment?.state === 'aligned_up' ||
+                data.alignment?.state === 'aligned_down'
+                  ? 'default'
+                  : 'outline'
+              }
+            >
+              {data.alignment?.state === 'aligned_up'
+                ? 'Aligned up'
+                : data.alignment?.state === 'aligned_down'
+                  ? 'Aligned down'
+                  : data.alignment?.state === 'mixed'
+                    ? 'Mixed'
+                    : 'No data'}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {data.timeframes?.map((tf) => {
+              const up = (tf.nifty_pct ?? 0) > 0
+              const flat = tf.direction === 'flat' || tf.nifty_pct === null
+              const tone = flat
+                ? 'text-muted-foreground'
+                : up
+                  ? 'text-emerald-500'
+                  : 'text-red-500'
+              const border = flat
+                ? 'border-border'
+                : up
+                  ? 'border-emerald-500/50'
+                  : 'border-red-500/50'
+              const delta = data.bias_deltas?.find((d) => d.label === tf.label)
+              return (
+                <div key={tf.label} className={`rounded-lg border-2 ${border} p-3`}>
+                  <div className="text-xs uppercase text-muted-foreground">Last {tf.label}</div>
+                  <div className={`text-2xl font-bold tabular-nums ${tone}`}>
+                    {tf.nifty_pct === null
+                      ? '--'
+                      : `${tf.nifty_pct >= 0 ? '+' : ''}${tf.nifty_pct.toFixed(2)}%`}
+                  </div>
+                  <div className="mt-1 space-y-0.5 text-xs">
+                    <div className="text-muted-foreground">
+                      Banks{' '}
+                      <span
+                        className={
+                          tf.banknifty_pct === null
+                            ? ''
+                            : tf.banknifty_pct >= 0
+                              ? 'text-emerald-500'
+                              : 'text-red-500'
+                        }
+                      >
+                        {tf.banknifty_pct === null
+                          ? '--'
+                          : `${tf.banknifty_pct >= 0 ? '+' : ''}${tf.banknifty_pct.toFixed(2)}%`}
+                      </span>
+                      {tf.banks_agree === false && (
+                        <span className="ml-1 text-amber-500">diverging</span>
+                      )}
+                    </div>
+                    <div className="text-muted-foreground">
+                      P(up){' '}
+                      {delta?.delta_pp === null || delta?.delta_pp === undefined
+                        ? '--'
+                        : `${delta.delta_pp >= 0 ? '+' : ''}${delta.delta_pp.toFixed(1)}pp`}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">{data.alignment?.note}</p>
+        </CardContent>
+      </Card>
 
       {/* Dial + narrative */}
       <div className="grid gap-6 lg:grid-cols-3">

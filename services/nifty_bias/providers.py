@@ -113,14 +113,23 @@ class OpenAlgoProvider:
             return {}
         return payload.get("data") or {}
 
-    def _candles(self, symbol: str, exchange: str) -> list[dict[str, Any]]:
-        """Return 5-minute candles, oldest first, or [] on failure."""
+    def _candles(
+        self, symbol: str, exchange: str, interval: str = CANDLE_INTERVAL, days: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Return candles, oldest first, or [] on failure.
+
+        Args:
+            symbol: Instrument symbol.
+            exchange: Exchange code.
+            interval: Candle interval; defaults to 5m.
+            days: Lookback window; defaults to HISTORY_LOOKBACK_DAYS.
+        """
         end = date.today()
-        start = end - timedelta(days=HISTORY_LOOKBACK_DAYS)
+        start = end - timedelta(days=days or HISTORY_LOOKBACK_DAYS)
         ok, payload, _ = get_history(
             symbol=symbol,
             exchange=exchange,
-            interval=CANDLE_INTERVAL,
+            interval=interval,
             start_date=start.isoformat(),
             end_date=end.isoformat(),
             api_key=self.api_key,
@@ -211,6 +220,15 @@ class OpenAlgoProvider:
         ctx.constituents = quotes
         if not ctx.constituents:
             ctx.errors.append("Constituent quotes unavailable; breadth signals disabled.")
+
+        # One 1-minute series per instrument covers 1/3/5/15m momentum; a
+        # 3-minute return is just the close three bars back.
+        ctx.minute_candles = self._candles(UNDERLYING, SPOT_EXCHANGE, interval="1m", days=2)
+        ctx.banknifty_minutes = self._candles(
+            BANKNIFTY_SYMBOL, SPOT_EXCHANGE, interval="1m", days=2
+        )
+        if not ctx.minute_candles:
+            ctx.errors.append("1-minute candles unavailable; momentum panel disabled.")
 
         ctx.global_cues = get_global_cues()
         if not ctx.global_cues:
