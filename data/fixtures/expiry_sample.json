@@ -1,0 +1,23 @@
+{
+  "data": [
+    "15-SEP-26",
+    "22-SEP-26",
+    "29-SEP-26",
+    "06-OCT-26",
+    "27-OCT-26",
+    "23-NOV-26",
+    "29-DEC-26",
+    "30-MAR-27",
+    "29-JUN-27",
+    "28-DEC-27",
+    "27-JUN-28",
+    "26-DEC-28",
+    "26-JUN-29",
+    "24-DEC-29",
+    "25-JUN-30",
+    "31-DEC-30",
+    "24-JUN-31"
+  ],
+  "message": "Found 17 expiry dates for NIFTY options in NFO",
+  "status": "success"
+}

@@ -1,0 +1,30 @@
+{
+  "NIFTY": {
+    "data": {
+      "ask": 0.0,
+      "bid": 0.0,
+      "high": 0.0,
+      "low": 0.0,
+      "ltp": 23635.1,
+      "oi": 0,
+      "open": 0.0,
+      "prev_close": 23779.15,
+      "volume": 0
+    },
+    "status": "success"
+  },
+  "INDIAVIX": {
+    "data": {
+      "ask": 0.0,
+      "bid": 0.0,
+      "high": 0.0,
+      "low": 0.0,
+      "ltp": 11.23,
+      "oi": 0,
+      "open": 0.0,
+      "prev_close": 11.16,
+      "volume": 0
+    },
+    "status": "success"
+  }
+}
