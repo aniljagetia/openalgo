@@ -44,6 +44,36 @@ _signal_history: deque[tuple[float, dict[str, float]]] = deque(maxlen=400)
 
 TIMEFRAME_MINUTES = (1, 3, 5, 15)
 
+# Rolling per-constituent LTP history. Derived from the multiquotes call we
+# already make each cycle, so the heavyweight timeframe columns cost no extra
+# broker requests -- fetching 1-minute candles for fifteen names would be
+# fifteen more history calls per refresh.
+_constituent_history: deque[tuple[float, dict[str, float]]] = deque(maxlen=400)
+
+
+def _constituent_deltas(now_ts: float) -> dict[str, dict[str, float | None]]:
+    """Percent price change per constituent over each timeframe.
+
+    Returns:
+        ``{symbol: {"1m": pct, "3m": ..., "5m": ..., "15m": ...}}``, with None
+        for windows that have no earlier observation.
+    """
+    if not _constituent_history:
+        return {}
+    current = _constituent_history[-1][1]
+    out: dict[str, dict[str, float | None]] = {}
+    for symbol, price in current.items():
+        row: dict[str, float | None] = {}
+        for minutes in TIMEFRAME_MINUTES:
+            cutoff = now_ts - minutes * 60
+            snapshot = next((snap for ts, snap in _constituent_history if ts <= cutoff), None)
+            past = None if snapshot is None else snapshot.get(symbol)
+            row[f"{minutes}m"] = (
+                None if not past else round((price - past) / past * 100.0, 3)
+            )
+        out[symbol] = row
+    return out
+
 
 def _signal_deltas(now_ts: float) -> dict[str, dict[str, float | None]]:
     """Per-signal score change over each timeframe.
@@ -163,7 +193,9 @@ def _levels(signals: list[Any]) -> dict[str, Any]:
     return levels
 
 
-def _constituent_rows(ctx: MarketContext) -> list[dict[str, Any]]:
+def _constituent_rows(
+    ctx: MarketContext, deltas: dict[str, dict[str, float | None]] | None = None
+) -> list[dict[str, Any]]:
     """Per-heavyweight rows for the UI, sorted by index impact.
 
     ``contribution`` is the name's weighted push on the index (its move times
@@ -184,6 +216,7 @@ def _constituent_rows(ctx: MarketContext) -> list[dict[str, Any]]:
                 "ltp": ltp,
                 "change_pct": change_pct,
                 "contribution": None if change_pct is None else change_pct * weight / 100.0,
+                "deltas": (deltas or {}).get(symbol, {}),
             }
         )
     return sorted(rows, key=lambda r: abs(r["contribution"] or 0.0), reverse=True)
@@ -226,6 +259,16 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
     _signal_history.append(
         (now_ts, {s.name: s.clamped() for s in signals if s.resolved})
     )
+    _constituent_history.append(
+        (
+            now_ts,
+            {
+                sym: float(q["ltp"])
+                for sym, q in ctx.constituents.items()
+                if q.get("ltp")
+            },
+        )
+    )
     deltas = _signal_deltas(now_ts)
     for group in result["groups"]:
         for sig in group["signals"]:
@@ -263,7 +306,7 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
                 * 100.0
             ),
         },
-        "constituents": _constituent_rows(ctx),
+        "constituents": _constituent_rows(ctx, _constituent_deltas(now_ts)),
         "timeframes": tf_rows,
         "alignment": alignment(tf_rows),
         "bias_deltas": _bias_deltas(now_ts),

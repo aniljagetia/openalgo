@@ -48,6 +48,7 @@ interface BiasResponse {
     ltp: number | null
     change_pct: number | null
     contribution: number | null
+    deltas?: Record<string, number | null>
   }[]
   events: { name: string; severity: string; kind: string; when: string; days_away: number }[]
   timeframes: {
@@ -483,21 +484,26 @@ export default function NiftyBias() {
           <CardContent>
             {data.constituents?.some((c) => c.ltp !== null) ? (
               <div className="space-y-1">
-                <div className="grid grid-cols-12 gap-2 border-b pb-1 text-xs text-muted-foreground">
-                  <div className="col-span-4">Stock</div>
-                  <div className="col-span-2 text-right">Weight</div>
-                  <div className="col-span-3 text-right">LTP</div>
-                  <div className="col-span-3 text-right">Change</div>
+                <div className="grid grid-cols-12 gap-1 border-b pb-1 text-[10px] uppercase text-muted-foreground">
+                  <div className="col-span-3">Stock</div>
+                  <div className="col-span-1 text-right">Wt</div>
+                  <div className="col-span-2 text-right">LTP</div>
+                  <div className="col-span-2 text-right">Day</div>
+                  {TF.map((t) => (
+                    <div key={t} className="col-span-1 text-right">
+                      {t}
+                    </div>
+                  ))}
                 </div>
                 {data.constituents.map((c) => (
-                  <div key={c.symbol} className="grid grid-cols-12 gap-2 py-1 text-sm">
-                    <div className="col-span-4 font-medium">{c.symbol}</div>
-                    <div className="col-span-2 text-right tabular-nums text-muted-foreground">
-                      {c.weight.toFixed(1)}%
+                  <div key={c.symbol} className="grid grid-cols-12 gap-1 py-1 text-sm">
+                    <div className="col-span-3 truncate font-medium">{c.symbol}</div>
+                    <div className="col-span-1 text-right text-xs tabular-nums text-muted-foreground">
+                      {c.weight.toFixed(1)}
                     </div>
-                    <div className="col-span-3 text-right tabular-nums">{num(c.ltp, 1)}</div>
+                    <div className="col-span-2 text-right tabular-nums">{num(c.ltp, 1)}</div>
                     <div
-                      className={`col-span-3 text-right tabular-nums ${
+                      className={`col-span-2 text-right tabular-nums ${
                         c.change_pct === null
                           ? 'text-muted-foreground'
                           : c.change_pct >= 0
@@ -509,6 +515,28 @@ export default function NiftyBias() {
                         ? '--'
                         : `${c.change_pct >= 0 ? '+' : ''}${c.change_pct.toFixed(2)}%`}
                     </div>
+                    {TF.map((t) => {
+                      const d = c.deltas?.[t]
+                      return (
+                        <div
+                          key={t}
+                          className={`col-span-1 text-right text-[11px] tabular-nums ${
+                            d === null || d === undefined
+                              ? 'text-muted-foreground/50'
+                              : d > 0.01
+                                ? 'text-emerald-500'
+                                : d < -0.01
+                                  ? 'text-red-500'
+                                  : 'text-muted-foreground'
+                          }`}
+                          title={`${c.symbol} change over last ${t}`}
+                        >
+                          {d === null || d === undefined
+                            ? '·'
+                            : `${d >= 0 ? '+' : ''}${d.toFixed(2)}`}
+                        </div>
+                      )
+                    })}
                   </div>
                 ))}
               </div>
