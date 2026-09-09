@@ -38,6 +38,15 @@ interface BiasResponse {
   errors: string[]
   spot: { ltp: number | null; prev_close: number | null; change_pct: number | null }
   vix: { ltp: number | null; prev_close: number | null }
+  banknifty: { ltp: number | null; prev_close: number | null; change_pct: number | null }
+  constituents: {
+    symbol: string
+    weight: number
+    ltp: number | null
+    change_pct: number | null
+    contribution: number | null
+  }[]
+  events: { name: string; severity: string; kind: string; when: string; days_away: number }[]
   expiry: string | null
   atm_strike: number | null
   probability_up: number
@@ -215,6 +224,25 @@ export default function NiftyBias() {
         </Card>
         <Card>
           <CardContent className="py-4">
+            <div className="text-sm text-muted-foreground">BANKNIFTY</div>
+            <div className="text-2xl font-bold tabular-nums">{num(data.banknifty?.ltp, 1)}</div>
+            <div
+              className={`text-sm tabular-nums ${
+                (data.banknifty?.change_pct ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
+              }`}
+            >
+              {data.banknifty?.change_pct === null || data.banknifty?.change_pct === undefined
+                ? '--'
+                : `${data.banknifty.change_pct >= 0 ? '+' : ''}${data.banknifty.change_pct.toFixed(2)}%`}
+              <span className="ml-1 text-muted-foreground">
+                vs Nifty {changePct >= 0 ? '+' : ''}
+                {changePct.toFixed(2)}%
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
             <div className="text-sm text-muted-foreground">India VIX</div>
             <div className="text-2xl font-bold tabular-nums">{num(data.vix.ltp)}</div>
           </CardContent>
@@ -302,6 +330,102 @@ export default function NiftyBias() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Heavyweights + upcoming events */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">
+              Index heavyweights
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                ranked by weighted push on Nifty, not by headline %
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.constituents?.some((c) => c.ltp !== null) ? (
+              <div className="space-y-1">
+                <div className="grid grid-cols-12 gap-2 border-b pb-1 text-xs text-muted-foreground">
+                  <div className="col-span-4">Stock</div>
+                  <div className="col-span-2 text-right">Weight</div>
+                  <div className="col-span-3 text-right">LTP</div>
+                  <div className="col-span-3 text-right">Change</div>
+                </div>
+                {data.constituents.map((c) => (
+                  <div key={c.symbol} className="grid grid-cols-12 gap-2 py-1 text-sm">
+                    <div className="col-span-4 font-medium">{c.symbol}</div>
+                    <div className="col-span-2 text-right tabular-nums text-muted-foreground">
+                      {c.weight.toFixed(1)}%
+                    </div>
+                    <div className="col-span-3 text-right tabular-nums">{num(c.ltp, 1)}</div>
+                    <div
+                      className={`col-span-3 text-right tabular-nums ${
+                        c.change_pct === null
+                          ? 'text-muted-foreground'
+                          : c.change_pct >= 0
+                            ? 'text-emerald-500'
+                            : 'text-red-500'
+                      }`}
+                    >
+                      {c.change_pct === null
+                        ? '--'
+                        : `${c.change_pct >= 0 ? '+' : ''}${c.change_pct.toFixed(2)}%`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Constituent quotes unavailable.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Upcoming events</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.events?.length ? (
+              <div className="space-y-3">
+                {data.events.map((e) => (
+                  <div key={`${e.name}-${e.when}`} className="border-b border-border/50 pb-2 last:border-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium">{e.name}</span>
+                      <Badge
+                        variant={e.severity === 'high' ? 'destructive' : 'outline'}
+                        className="shrink-0"
+                      >
+                        {e.severity}
+                      </Badge>
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {new Date(e.when).toLocaleString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                      {e.days_away >= 0 ? ` - in ${Math.ceil(e.days_away)}d` : ' - today'}
+                    </div>
+                  </div>
+                ))}
+                <p className="pt-1 text-xs text-muted-foreground">
+                  Events damp confidence rather than adding direction. Earnings dates are shown,
+                  never scored - a heavyweight's results are already in its price and the option
+                  chain. Maintain the list in{' '}
+                  <code className="text-[11px]">data/nifty_bias_events.json</code>.
+                </p>
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No events configured. Add them to data/nifty_bias_events.json.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Option chain OI */}

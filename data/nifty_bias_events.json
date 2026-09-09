@@ -3,23 +3,69 @@
     "date": "2026-10-08",
     "time": "10:00",
     "name": "RBI MPC decision",
-    "severity": "high"
+    "severity": "high",
+    "kind": "macro"
   },
   {
     "date": "2026-09-17",
     "time": "23:30",
     "name": "US Fed rate decision",
-    "severity": "high"
+    "severity": "high",
+    "kind": "macro"
   },
   {
     "date": "2026-09-12",
     "time": "17:30",
     "name": "India CPI inflation",
-    "severity": "medium"
+    "severity": "medium",
+    "kind": "macro"
   },
   {
     "date": "2026-09-30",
     "name": "MSCI index review effective",
-    "severity": "medium"
+    "severity": "medium",
+    "kind": "macro"
+  },
+  {
+    "date": "2026-10-16",
+    "name": "Reliance Q2 results",
+    "severity": "low",
+    "kind": "earnings"
+  },
+  {
+    "date": "2026-10-17",
+    "name": "HDFC Bank Q2 results",
+    "severity": "low",
+    "kind": "earnings"
+  },
+  {
+    "date": "2026-10-19",
+    "name": "ICICI Bank Q2 results",
+    "severity": "low",
+    "kind": "earnings"
+  },
+  {
+    "date": "2026-10-13",
+    "name": "TCS Q2 results",
+    "severity": "low",
+    "kind": "earnings"
+  },
+  {
+    "date": "2026-10-15",
+    "name": "Infosys Q2 results",
+    "severity": "low",
+    "kind": "earnings"
+  },
+  {
+    "date": "2026-10-23",
+    "name": "ITC Q2 results",
+    "severity": "low",
+    "kind": "earnings"
+  },
+  {
+    "date": "2026-10-28",
+    "name": "L&T Q2 results",
+    "severity": "low",
+    "kind": "earnings"
   }
 ]

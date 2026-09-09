@@ -121,3 +121,36 @@ def active_gate(now: datetime | None = None) -> dict[str, Any]:
         "rather than positioning, so the chain's conviction is not trustworthy."
     )
     return {"multiplier": multiplier, "events": pending, "note": note}
+
+
+def upcoming(limit: int = 6, now: datetime | None = None) -> list[dict[str, Any]]:
+    """List the next scheduled events, for display rather than gating.
+
+    Earnings dates belong here, not in the scoring model: a heavyweight's
+    results are already reflected in its price and in the option chain, so
+    scoring them again would count the same information twice. Showing *when*
+    they land is genuinely useful; scoring them is not.
+
+    Args:
+        limit: Maximum number of events to return.
+        now: Override for testing; defaults to now in IST.
+
+    Returns:
+        Upcoming events, soonest first.
+    """
+    now = now or datetime.now(IST)
+    rows: list[dict[str, Any]] = []
+    for event in load_events():
+        when = _event_dt(event)
+        if when is None or when < now - timedelta(hours=6):
+            continue
+        rows.append(
+            {
+                "name": event.get("name", "Scheduled event"),
+                "severity": str(event.get("severity", "medium")).lower(),
+                "kind": str(event.get("kind", "macro")).lower(),
+                "when": when.isoformat(),
+                "days_away": round((when - now).total_seconds() / 86400.0, 2),
+            }
+        )
+    return sorted(rows, key=lambda r: r["when"])[:limit]

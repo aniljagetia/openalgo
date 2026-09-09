@@ -10,7 +10,8 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
-from services.nifty_bias.events import active_gate
+from services.nifty_bias.constituents import NIFTY_HEAVYWEIGHTS
+from services.nifty_bias.events import active_gate, upcoming
 from services.nifty_bias.providers import DataProvider, MockProvider, OpenAlgoProvider
 from services.nifty_bias.scorer import aggregate, narrate
 from services.nifty_bias.signals import compute_all
@@ -97,6 +98,32 @@ def _levels(signals: list[Any]) -> dict[str, Any]:
     return levels
 
 
+def _constituent_rows(ctx: MarketContext) -> list[dict[str, Any]]:
+    """Per-heavyweight rows for the UI, sorted by index impact.
+
+    ``contribution`` is the name's weighted push on the index (its move times
+    its index weight), so the list ranks by what actually moved Nifty rather
+    than by headline percentage.
+    """
+    rows = []
+    for symbol, weight in NIFTY_HEAVYWEIGHTS.items():
+        quote = ctx.constituents.get(symbol) or {}
+        ltp, prev = quote.get("ltp"), quote.get("prev_close")
+        change_pct = None
+        if ltp and prev:
+            change_pct = (float(ltp) - float(prev)) / float(prev) * 100.0
+        rows.append(
+            {
+                "symbol": symbol,
+                "weight": weight,
+                "ltp": ltp,
+                "change_pct": change_pct,
+                "contribution": None if change_pct is None else change_pct * weight / 100.0,
+            }
+        )
+    return sorted(rows, key=lambda r: abs(r["contribution"] or 0.0), reverse=True)
+
+
 def build_provider(api_key: str | None, use_mock: bool) -> DataProvider:
     """Choose a provider.
 
@@ -149,6 +176,19 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
             "ltp": ctx.vix_ltp,
             "prev_close": ctx.vix_prev_close,
         },
+        "banknifty": {
+            "ltp": ctx.banknifty_ltp,
+            "prev_close": ctx.banknifty_prev_close,
+            "change_pct": (
+                None
+                if not ctx.banknifty_ltp or not ctx.banknifty_prev_close
+                else (ctx.banknifty_ltp - ctx.banknifty_prev_close)
+                / ctx.banknifty_prev_close
+                * 100.0
+            ),
+        },
+        "constituents": _constituent_rows(ctx),
+        "events": upcoming(),
         "expiry": ctx.expiry,
         "atm_strike": ctx.atm_strike,
         "forward_price": ctx.forward_price,
