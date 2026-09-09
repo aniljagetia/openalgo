@@ -36,6 +36,39 @@ _last_chain: list[dict[str, Any]] = []
 _bias_history: deque[tuple[float, float]] = deque(maxlen=400)
 
 
+# Rolling per-signal score history: (epoch, {signal_name: score}). This is what
+# lets every parameter report its own 1/3/5/15-minute change rather than only
+# the headline. Same caveat as _bias_history: in-memory, single worker, and it
+# only accumulates while something is polling.
+_signal_history: deque[tuple[float, dict[str, float]]] = deque(maxlen=400)
+
+TIMEFRAME_MINUTES = (1, 3, 5, 15)
+
+
+def _signal_deltas(now_ts: float) -> dict[str, dict[str, float | None]]:
+    """Per-signal score change over each timeframe.
+
+    Returns:
+        ``{signal_name: {"1m": delta, "3m": ..., "5m": ..., "15m": ...}}``.
+        A window with no observation old enough yields None, never 0 -- the
+        page must not imply a parameter was steady when it simply had no
+        earlier reading to compare against.
+    """
+    if not _signal_history:
+        return {}
+    current = _signal_history[-1][1]
+    out: dict[str, dict[str, float | None]] = {}
+    for name, score in current.items():
+        row: dict[str, float | None] = {}
+        for minutes in TIMEFRAME_MINUTES:
+            cutoff = now_ts - minutes * 60
+            past_snapshot = next((snap for ts, snap in _signal_history if ts <= cutoff), None)
+            past = None if past_snapshot is None else past_snapshot.get(name)
+            row[f"{minutes}m"] = None if past is None else round(score - past, 3)
+        out[name] = row
+    return out
+
+
 def _bias_deltas(now_ts: float) -> list[dict[str, Any]]:
     """Change in P(up), in percentage points, over 1/3/5/15 minutes.
 
@@ -190,6 +223,13 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
 
     now_ts = datetime.now(IST).timestamp()
     _bias_history.append((now_ts, result["probability_up"]))
+    _signal_history.append(
+        (now_ts, {s.name: s.clamped() for s in signals if s.resolved})
+    )
+    deltas = _signal_deltas(now_ts)
+    for group in result["groups"]:
+        for sig in group["signals"]:
+            sig["deltas"] = deltas.get(sig["name"], {})
     tf_rows = timeframe_table(ctx.minute_candles, ctx.banknifty_minutes)
 
     # Only remember a chain we actually got, or we would wipe the baseline

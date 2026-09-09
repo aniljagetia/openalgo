@@ -12,7 +12,10 @@ interface Signal {
   weight: number
   explanation: string
   resolved: boolean
+  deltas?: Record<string, number | null>
 }
+
+const TF = ['1m', '3m', '5m', '15m'] as const
 
 interface Group {
   key: string
@@ -319,6 +322,15 @@ export default function NiftyBias() {
               return (
                 <div key={tf.label} className={`rounded-lg border-2 ${border} p-3`}>
                   <div className="text-xs uppercase text-muted-foreground">Last {tf.label}</div>
+                  <div className={`text-lg font-bold uppercase ${tone}`}>
+                    {tf.nifty_pct === null
+                      ? 'No data'
+                      : flat
+                        ? 'Flat'
+                        : up
+                          ? 'Bullish'
+                          : 'Bearish'}
+                  </div>
                   <div className={`text-2xl font-bold tabular-nums ${tone}`}>
                     {tf.nifty_pct === null
                       ? '--'
@@ -408,13 +420,46 @@ export default function NiftyBias() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="grid grid-cols-12 gap-1 border-b pb-1 text-[10px] uppercase text-muted-foreground">
+                <div className="col-span-5">Parameter</div>
+                <div className="col-span-2 text-right">Score</div>
+                {TF.map((t) => (
+                  <div key={t} className="col-span-1 text-right">
+                    {t}
+                  </div>
+                ))}
+                <div className="col-span-1" />
+              </div>
               {g.signals.map((s) => (
                 <div key={s.name} className="border-b border-border/50 pb-2 last:border-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium">{s.name}</span>
-                    <span className={`text-sm tabular-nums ${toneFor(s.score)}`}>
-                      {s.score === null ? '--' : s.score.toFixed(3)}
+                  <div className="grid grid-cols-12 items-center gap-1">
+                    <span className="col-span-5 text-sm font-medium">{s.name}</span>
+                    <span className={`col-span-2 text-right text-sm tabular-nums ${toneFor(s.score)}`}>
+                      {s.score === null ? '--' : s.score.toFixed(2)}
                     </span>
+                    {TF.map((t) => {
+                      const d = s.deltas?.[t]
+                      return (
+                        <span
+                          key={t}
+                          className={`col-span-1 text-right text-[11px] tabular-nums ${
+                            d === null || d === undefined
+                              ? 'text-muted-foreground/50'
+                              : d > 0.005
+                                ? 'text-emerald-500'
+                                : d < -0.005
+                                  ? 'text-red-500'
+                                  : 'text-muted-foreground'
+                          }`}
+                          title={`change over last ${t}`}
+                        >
+                          {d === null || d === undefined
+                            ? '·'
+                            : `${d >= 0 ? '+' : ''}${d.toFixed(2)}`}
+                        </span>
+                      )
+                    })}
+                    <span className="col-span-1" />
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">{s.explanation}</p>
                 </div>
