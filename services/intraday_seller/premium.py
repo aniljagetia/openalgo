@@ -68,11 +68,13 @@ def atm_iv(chain: list[dict[str, Any]], atm_strike: float | None) -> float | Non
 
 
 def realised_vol(minute_candles: list[dict[str, Any]]) -> float | None:
-    """Annualised realised volatility from today's 1-minute closes.
+    """Annualised realised volatility from the latest session's 1-minute closes.
 
     Args:
         minute_candles: 1-minute candles, oldest first. Only the most recent
-            session is used -- yesterday's bars would blend two regimes.
+            session is used -- blending two sessions blends two regimes. Before
+            the open that session is yesterday, which is the right baseline to
+            price today's implied volatility against anyway.
 
     Returns:
         Annualised volatility in percent, or None with fewer than 30 usable
@@ -127,7 +129,7 @@ def iv_vs_realised(
             "weight": 2.0,
             "explanation": (
                 "Need both ATM implied volatility and at least 30 one-minute bars "
-                "from today to compare them."
+                "from the latest session to compare them."
             ),
             "detail": {"atm_iv": iv, "realised_vol": rv},
         }
@@ -146,7 +148,8 @@ def iv_vs_realised(
         "score": round(score, 3),
         "weight": 2.0,
         "explanation": (
-            f"ATM IV {iv:.1f}% against {rv:.1f}% realised today (ratio {ratio:.2f}) -- {verdict}."
+            f"ATM IV {iv:.1f}% against {rv:.1f}% realised in the latest session "
+            f"(ratio {ratio:.2f}) -- {verdict}."
         ),
         "detail": {"atm_iv": round(iv, 2), "realised_vol": round(rv, 2), "ratio": round(ratio, 3)},
     }

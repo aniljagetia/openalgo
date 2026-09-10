@@ -44,7 +44,7 @@ def _num(value: Any) -> float | None:
 def strike_step(chain: list[dict[str, Any]]) -> float | None:
     """Smallest gap between consecutive strikes, i.e. the strike interval."""
     strikes = sorted({s for row in chain if (s := _num(row.get("strike"))) is not None})
-    gaps = [b - a for a, b in zip(strikes, strikes[1:]) if b > a]
+    gaps = [b - a for a, b in zip(strikes, strikes[1:], strict=False) if b > a]
     return min(gaps) if gaps else None
 
 

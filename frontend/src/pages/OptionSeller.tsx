@@ -61,6 +61,7 @@ interface SellerResponse {
   expiry: string | null
   atm_strike: number | null
   levels: {
+    session_live: boolean
     prev_high: number | null
     prev_low: number | null
     prev_close: number | null
@@ -555,9 +556,21 @@ export default function OptionSeller() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Yesterday and today</CardTitle>
+            <CardTitle className="flex items-center justify-between text-base">
+              <span>Yesterday and today</span>
+              {!data.levels.session_live && (
+                <Badge variant="secondary">Today has not traded yet</Badge>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {!data.levels.session_live && (
+              <p className="text-xs text-muted-foreground">
+                Before the open there is no today. The figures below are the last completed
+                session and the one before it, so nothing is labelled &quot;today&quot; until the
+                market has actually traded.
+              </p>
+            )}
             <RangeBar levels={data.levels} spot={data.spot.ltp} />
             <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
               <div>

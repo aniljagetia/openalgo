@@ -70,14 +70,18 @@ def group_by_session(candles: list[dict[str, Any]]) -> dict[date, dict[str, floa
     return sessions
 
 
-def average_range(sessions: dict[date, dict[str, float]], lookback: int = 5) -> float | None:
-    """Mean high-low range of the completed sessions before the latest one.
+def average_range(
+    sessions: dict[date, dict[str, float]], lookback: int = 5, exclude_last: bool = True
+) -> float | None:
+    """Mean high-low range of recent completed sessions.
 
-    The yardstick for "is today already a wide day?". The current session is
-    excluded because a day that is only an hour old would drag the average
-    down and make every day look wide by comparison.
+    The yardstick for "is today already a wide day?". While a session is live
+    it is excluded, because a day that is only an hour old would drag the
+    average down and make every day look wide by comparison. Before the open
+    there is no live session, so nothing is excluded.
     """
-    days = sorted(sessions)[:-1][-lookback:]
+    ordered = sorted(sessions)
+    days = (ordered[:-1] if exclude_last else ordered)[-lookback:]
     ranges = [sessions[d]["high"] - sessions[d]["low"] for d in days]
     ranges = [r for r in ranges if r > 0]
     if not ranges:
@@ -107,6 +111,7 @@ def build(
     candles: list[dict[str, Any]],
     minute_candles: list[dict[str, Any]] | None = None,
     spot: float | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Assemble the full levels picture.
 
@@ -115,17 +120,31 @@ def build(
         minute_candles: Recent 1-minute candles, used to keep today's high and
             low current between 5-minute bars.
         spot: Current index level, used for the range-position fields.
+        now: Override for the clock, used by tests.
 
     Returns:
         Previous-session and current-session extremes, pivots, where price sits
         inside each range, and how today's range compares with recent days.
         Every field is None rather than 0 when it cannot be computed.
+
+    Before the open, the newest session in the data is *yesterday*, not today.
+    Calling it "today's high" would be wrong on every pre-open screen, so the
+    session list is shifted by one and today's fields stay empty until the
+    market has actually traded. ``session_live`` says which case applies.
     """
+    now = now or datetime.now(IST)
     sessions = group_by_session(candles)
     days = sorted(sessions)
 
-    today = sessions[days[-1]] if days else None
-    prev = sessions[days[-2]] if len(days) >= 2 else None
+    # Has the newest session in the data actually started today?
+    session_live = bool(days) and days[-1] == now.date()
+
+    if session_live:
+        today = sessions[days[-1]]
+        prev = sessions[days[-2]] if len(days) >= 2 else None
+    else:
+        today = None
+        prev = sessions[days[-1]] if days else None
 
     today_high = None if today is None else today["high"]
     today_low = None if today is None else today["low"]
@@ -133,7 +152,7 @@ def build(
 
     # The 1-minute series is fresher: a new extreme can be printed inside the
     # 5-minute bar that is still forming.
-    if minute_candles and days:
+    if session_live and minute_candles:
         latest = days[-1]
         for candle in minute_candles:
             if _day_of(candle) != latest:
@@ -144,15 +163,18 @@ def build(
             if low is not None:
                 today_low = low if today_low is None else min(today_low, low)
 
-    # And spot itself can print outside both series between polls.
-    if spot is not None:
+    # And spot itself can print outside both series between polls. Only while
+    # the session is live -- before the open the "spot" on the wire is just the
+    # previous close, and folding it in would invent a zero-width range.
+    if session_live and spot is not None:
         today_high = spot if today_high is None else max(today_high, spot)
         today_low = spot if today_low is None else min(today_low, spot)
 
     day_range = None if today_high is None or today_low is None else today_high - today_low
-    typical = average_range(sessions)
+    typical = average_range(sessions, exclude_last=session_live)
 
     out: dict[str, Any] = {
+        "session_live": session_live,
         "prev_high": None if prev is None else prev["high"],
         "prev_low": None if prev is None else prev["low"],
         "prev_close": None if prev is None else prev["close"],
