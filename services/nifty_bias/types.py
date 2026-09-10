@@ -84,6 +84,7 @@ class MarketContext:
         vix_prev_close: INDIAVIX previous close.
         expiry: Expiry used for the chain, DDMMMYY (e.g. ``"15SEP26"``).
         atm_strike: At-the-money strike reported by the chain.
+        expiry_ts: Epoch seconds of the expiry, for days-to-expiry maths.
         forward_price: Synthetic forward supplied by the chain.
         chain: Raw ``chain`` array from /optionchain.
         candles: 5-minute candles for the INDEX (no volume -- see notes).
@@ -104,6 +105,7 @@ class MarketContext:
     vix_prev_close: float | None = None
     expiry: str | None = None
     atm_strike: float | None = None
+    expiry_ts: int | None = None
     forward_price: float | None = None
     chain: list[dict[str, Any]] = field(default_factory=list)
     candles: list[dict[str, Any]] = field(default_factory=list)

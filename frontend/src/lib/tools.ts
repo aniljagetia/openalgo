@@ -22,6 +22,13 @@ export const tools: Tool[] = [
     color: 'bg-purple-500',
   },
   {
+    title: 'Intraday Option Seller',
+    description:
+      "Sell calls or sell puts today: a side call from bias, momentum and yesterday's/today's high-low, a sellability score from IV against realised vol, and the strike, stop and invalidation level to use",
+    href: '/optionseller',
+    color: 'bg-orange-500',
+  },
+  {
     title: 'Strategy Builder',
     description:
       'Build multi-leg option strategies with live Greeks, payoff diagram and what-if simulators',

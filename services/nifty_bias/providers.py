@@ -181,6 +181,7 @@ class OpenAlgoProvider:
         if ok:
             ctx.chain = chain_payload.get("chain") or []
             ctx.atm_strike = chain_payload.get("atm_strike")
+            ctx.expiry_ts = chain_payload.get("expiry_ts")
             ctx.forward_price = chain_payload.get("forward_price")
             ctx.spot_ltp = chain_payload.get("underlying_ltp")
             ctx.spot_prev_close = chain_payload.get("underlying_prev_close")
@@ -276,6 +277,7 @@ class MockProvider:
         chain_payload = self._load("chain_sample") or {}
         ctx.chain = chain_payload.get("chain") or []
         ctx.atm_strike = chain_payload.get("atm_strike")
+        ctx.expiry_ts = chain_payload.get("expiry_ts")
         ctx.forward_price = chain_payload.get("forward_price")
         ctx.spot_ltp = chain_payload.get("underlying_ltp")
         ctx.spot_prev_close = chain_payload.get("underlying_prev_close")

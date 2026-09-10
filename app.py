@@ -69,6 +69,9 @@ from blueprints.gc_json import gc_json_bp
 from blueprints.gex import gex_bp  # Import the GEX blueprint
 from blueprints.health import health_bp  # Import the health monitoring blueprint
 from blueprints.historify import historify_bp  # Import the historify blueprint
+from blueprints.intraday_seller import (
+    intraday_seller_bp,  # Import the Intraday Option Seller blueprint
+)
 from blueprints.ivchart import ivchart_bp  # Import the IV chart blueprint
 from blueprints.ivsmile import ivsmile_bp  # Import the IV Smile blueprint
 from blueprints.latency import latency_bp  # Import the latency blueprint
@@ -331,6 +334,7 @@ def create_app():
     app.register_blueprint(watchlist_bp)  # Register charting watchlist blueprint
     app.register_blueprint(oitracker_bp)  # Register OI tracker blueprint
     app.register_blueprint(nifty_bias_bp)  # Register Nifty Bias dashboard blueprint
+    app.register_blueprint(intraday_seller_bp)  # Register Intraday Option Seller blueprint
     app.register_blueprint(gamma_density_bp)  # Register Gamma Density blueprint
     app.register_blueprint(straddle_bp)  # Register straddle chart blueprint
     app.register_blueprint(strategy_chart_bp)  # Register strategy chart blueprint

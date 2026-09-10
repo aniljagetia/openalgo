@@ -176,7 +176,7 @@ def _candle_rows(ctx: MarketContext, limit: int = 120) -> list[dict[str, Any]]:
     ]
 
 
-def _levels(signals: list[Any]) -> dict[str, Any]:
+def key_levels(signals: list[Any]) -> dict[str, Any]:
     """Pull the key price levels out of the signals that computed them."""
     levels: dict[str, Any] = {}
     for sig in signals:
@@ -233,15 +233,17 @@ def build_provider(api_key: str | None, use_mock: bool) -> DataProvider:
     return OpenAlgoProvider(api_key)
 
 
-def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, Any]:
-    """Run one full scoring cycle.
+def run_cycle(api_key: str | None = None, use_mock: bool = False) -> dict[str, Any]:
+    """Fetch a snapshot and score it, without shaping it for any one page.
 
-    Args:
-        api_key: OpenAlgo API key for live data. When absent, mock is used.
-        use_mock: Force the fixture provider even if a key is present.
+    Split out of :func:`get_bias` so the intraday option-seller dashboard can
+    reuse the same fetch and the same scoring rather than making a second set
+    of broker calls for the same market. Both pages feeding one rolling history
+    is a bonus: the delta columns fill twice as fast.
 
     Returns:
-        The complete dashboard payload.
+        The raw ingredients -- context, signals, aggregate result, event gate,
+        timeframe rows and the cycle timestamp.
     """
     global _last_chain
 
@@ -279,6 +281,31 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
     # that OI deltas depend on every time a fetch fails.
     if ctx.chain:
         _last_chain = ctx.chain
+
+    return {
+        "ctx": ctx,
+        "signals": signals,
+        "result": result,
+        "gate": gate,
+        "timeframes": tf_rows,
+        "alignment": alignment(tf_rows),
+        "now_ts": now_ts,
+    }
+
+
+def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, Any]:
+    """Run one full scoring cycle and shape it for the bias dashboard.
+
+    Args:
+        api_key: OpenAlgo API key for live data. When absent, mock is used.
+        use_mock: Force the fixture provider even if a key is present.
+
+    Returns:
+        The complete dashboard payload.
+    """
+    cycle = run_cycle(api_key, use_mock)
+    ctx, signals, result = cycle["ctx"], cycle["signals"], cycle["result"]
+    gate, tf_rows, now_ts = cycle["gate"], cycle["timeframes"], cycle["now_ts"]
 
     return {
         "status": "success",
@@ -322,7 +349,7 @@ def get_bias(api_key: str | None = None, use_mock: bool = False) -> dict[str, An
         "gate": result["gate"],
         "weights": result["weights"],
         "groups": result["groups"],
-        "levels": _levels(signals),
+        "levels": key_levels(signals),
         "chain": _chain_rows(ctx),
         "candles": _candle_rows(ctx),
     }
